@@ -353,8 +353,20 @@
         #id-list li.id-list-item.list-item-highlighted .list-item-label,
         #id-list li.id-list-item.list-item-highlighted .list-item-type { color: var(--bg-secondary); }
         
-        .delete-btn { background-color: var(--accent-danger); color: white; border: none; font-size: 0.8em; padding: 4px 8px; margin-left: 10px; flex-shrink: 0; }
-        .delete-btn:hover { background-color: #c5372c; }
+        .delete-btn {
+            background-color: transparent; /* Subtle background */
+            color: var(--text-secondary); /* Subtle icon color */
+            border: none;
+            font-size: 0.8em;
+            padding: 4px; /* Reduced padding */
+            margin-left: 8px; /* Adjusted margin */
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        .delete-btn:hover {
+            background-color: var(--bg-tertiary); /* Slight background on hover */
+            color: var(--accent-danger); /* Red icon on hover */
+        }
 
         @media (max-width: 1050px) { header { gap: 10px; } }
         @media (max-width: 900px) { 
@@ -586,7 +598,7 @@
 
         // --- Utility Functions ---
         function debounce(func, delay) { let timeout; return function(...args) { const context = this; clearTimeout(timeout); timeout = setTimeout(() => func.apply(context, args), delay); }; }
-        function markUnsavedChanges(isUnsaved = true) { hasUnsavedChanges = isUnsaved; if (isUnsaved) { if (!document.title.startsWith('* ')) document.title = "* " + document.title; } else { if (document.title.startsWith('* ')) document.title = document.title.substring(2); } updateExportAndActionButtonsState(); }
+        function markUnsavedChanges(isUnsaved = true) { hasUnsavedChanges = isUnsaved; if (isUnsaved) { if (!document.title.startsWith('* ')) document.title = "* " + document.title; } else { if (document.title.startsWith('*')) document.title = document.title.substring(2); } updateExportAndActionButtonsState(); }
         function formatDateForFilename() { const d = new Date(); return `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}_${d.getHours().toString().padStart(2,'0')}${d.getMinutes().toString().padStart(2,'0')}`; }
         function getNextDefaultColor() { const color = DEFAULT_SECTION_COLORS[currentDefaultColorIndex]; currentDefaultColorIndex = (currentDefaultColorIndex + 1) % DEFAULT_SECTION_COLORS.length; return color; }
         function getPageAnnotations(pageNum) { return annotations[String(pageNum)] || []; }
@@ -606,6 +618,7 @@
         }
 
         function hideConfirmationModal() {
+            console.log('[hideConfirmationModal] Hiding modal.'); // <-- New log
             DOMElements.confirmationModal.style.display = 'none';
             confirmationCallback = null;
         }
@@ -918,42 +931,99 @@
         function deselectAnnotation() { if (!selectedAnnotation) return; const bE = document.getElementById(`bbox-${selectedAnnotation}`); if (bE) bE.classList.remove('selected'); const lI = document.getElementById(`list-item-${selectedAnnotation}`); if (lI) lI.classList.remove('list-item-highlighted'); selectedAnnotation = null; hideAnnotationAttributeForm(); DOMElements.attributesStatus.textContent = ""; }
         function handleBoxMouseDown(e, annId) { e.stopPropagation(); const annData = findAnnotationById(annId); if (!annData) return; selectAnnotation(annId); const boxEl = document.getElementById(`bbox-${annId}`), rect = boxEl.getBoundingClientRect(); if (e.target.classList.contains('resize-handle')) { isResizing = true; resizeHandleType = e.target.dataset.type; originalBoxRect = {x:parseFloat(boxEl.style.left),y:parseFloat(boxEl.style.top),width:parseFloat(boxEl.style.width),height:parseFloat(boxEl.style.height)}; document.body.style.cursor = e.target.style.cursor; } else { isDragging = true; boxEl.classList.add('dragging'); dragOffset.x = e.clientX - rect.left; dragOffset.y = e.clientY - rect.top; document.body.style.cursor = 'grabbing'; } document.addEventListener('mousemove', handleDocumentMouseMove); document.addEventListener('mouseup', handleDocumentMouseUp); }
         function handleDocumentMouseMove(e) { if (!isDragging && !isResizing) return; e.preventDefault(); const boxEl = document.getElementById(`bbox-${selectedAnnotation}`); if (!boxEl) return; const canvRect = DOMElements.annotationLayer.getBoundingClientRect(); const mX = e.clientX - canvRect.left, mY = e.clientY - canvRect.top; if (isDragging) { let nX = mX - dragOffset.x, nY = mY - dragOffset.y; nX = Math.max(0, Math.min(nX, DOMElements.pdfCanvas.width - parseFloat(boxEl.style.width))); nY = Math.max(0, Math.min(nY, DOMElements.pdfCanvas.height - parseFloat(boxEl.style.height))); boxEl.style.left = `${nX}px`; boxEl.style.top = `${nY}px`; } else if (isResizing) { let {x,y,width,height} = originalBoxRect; if(resizeHandleType.includes('w')){const nX=Math.min(mX,x+width-MIN_BOX_SIZE);width=x+width-nX;x=nX;} if(resizeHandleType.includes('n')){const nY=Math.min(mY,y+height-MIN_BOX_SIZE);height=y+height-nY;y=nY;} if(resizeHandleType.includes('e')){width=Math.max(MIN_BOX_SIZE,mX-x);} if(resizeHandleType.includes('s')){height=Math.max(MIN_BOX_SIZE,mY-y);} width=Math.max(MIN_BOX_SIZE,width); height=Math.max(MIN_BOX_SIZE,height); x=Math.max(0,Math.min(x,DOMElements.pdfCanvas.width-width)); y=Math.max(0,Math.min(y,DOMElements.pdfCanvas.height-height)); width=Math.min(width,DOMElements.pdfCanvas.width-x); height=Math.min(height,DOMElements.pdfCanvas.height-y); Object.assign(boxEl.style, {left:`${x}px`,top:`${y}px`,width:`${width}px`,height:`${height}px`}); } }
-        function handleDocumentMouseUp(e) { const boxEl = document.getElementById(`bbox-${selectedAnnotation}`); if(boxEl)boxEl.classList.remove('dragging'); document.removeEventListener('mousemove',handleDocumentMouseMove); document.removeEventListener('mouseup',handleDocumentMouseUp); document.body.style.cursor='default'; if(isDragging||isResizing){ const annD=findAnnotationById(selectedAnnotation); if(annD && boxEl){const cW=DOMElements.pdfCanvas.width,cH=DOMElements.pdfCanvas.height;Object.assign(annD,{relX:parseFloat(boxEl.style.left)/cW,relY:parseFloat(boxEl.style.top)/cH,relW:parseFloat(boxEl.style.width)/cW,relH:parseFloat(boxEl.style.height)/cH});markUnsavedChanges();}} isDragging=false;isResizing=false;resizeHandleType=null;originalBoxRect=null; }
+ function handleDocumentMouseUp(e) { const boxEl = document.getElementById(`bbox-${selectedAnnotation}`); if(boxEl)boxEl.classList.remove('dragging'); document.removeEventListener('mousemove',handleDocumentMouseMove); document.removeEventListener('mouseup',handleDocumentMouseUp); document.body.style.cursor='default'; if(isDragging||isResizing){ const annD=findAnnotationById(selectedAnnotation); if(annD && boxEl){const cW=DOMElements.pdfCanvas.width,cH=DOMElements.pdfCanvas.height;Object.assign(annD,{relX:parseFloat(boxEl.style.left)/cW,relY:parseFloat(boxEl.style.top)/cH,relW:parseFloat(boxEl.style.width)/cW,relH:parseFloat(boxEl.style.height)/cH});markUnsavedChanges();}} isDragging=false;isResizing=false;resizeHandleType=null;originalBoxRect=null; }
         DOMElements.pdfViewerContentArea.addEventListener('click', (e) => { if (e.target === DOMElements.pdfViewerContentArea || e.target === DOMElements.canvasContainer) deselectAnnotation();});
-        function deleteAnnotation(annId, skipConfirm = false) { 
-            if (!skipConfirm) { // Only show confirm if not skipped
+        // --- Annotation Deletion ---
+        function deleteAnnotation(annId, skipConfirm = false) {
+            console.log(`[deleteAnnotation] Attempting to delete annotation with ID: ${annId}`);
+            const annData = findAnnotationById(annId);
+            if (!annData) {
+                console.error(`[deleteAnnotation] Annotation data not found for ID: ${annId}. Cannot proceed with deletion.`);
+                return;
+            }
+            console.log(`[deleteAnnotation] Found annotation data for ${annId}:`, annData);
+
+            if (!skipConfirm) {
+                console.log(`[deleteAnnotation] Showing confirmation modal for ${annId}.`);
                 showConfirmationModal(
                     "Delete Annotation Confirmation",
                     `Delete annotation ${annId}?`,
                     (confirmed) => {
+                        console.log(`[deleteAnnotation] Confirmation modal callback. Confirmed: ${confirmed} for ${annId}`); // <-- New log
                         if (confirmed) {
+                            console.log(`[deleteAnnotation] Confirmation received. Calling performDeleteAnnotation for ${annId}.`); // <-- New log
                             performDeleteAnnotation(annId);
+                        } else {
+                            console.log(`[deleteAnnotation] Deletion cancelled by user for ${annId}.`); // <-- New log
                         }
                     }
                 );
             } else {
+                console.log(`[deleteAnnotation] Skipping confirmation. Calling performDeleteAnnotation for ${annId}.`); // <-- New log
                 performDeleteAnnotation(annId);
             }
         }
 
-        function performDeleteAnnotation(annId) { // New helper function
-            let found = false; 
-            for(const pNS in annotations){ 
-                const pA=annotations[pNS]; 
-                const i=pA.findIndex(a=>a.id===annId); 
-                if(i>-1){pA.splice(i,1);if(pA.length===0)delete annotations[pNS];found=true;break;}
-            } 
-            if(found){
-                const bE=document.getElementById(`bbox-${annId}`);if(bE)bE.remove();
-                if(selectedAnnotation===annId)deselectAnnotation();
+        function performDeleteAnnotation(annotationIdToDelete) {
+            console.log(`[performDeleteAnnotation] Attempting to delete annotationId: ${annotationIdToDelete}`);
+            let found = false;
+            let deletedAnnotationData = null; 
+            let pageNumberOfDeletedAnnotation = null;
+
+            // First, find the annotation and its page number to get its data before removal
+            for (const pageNumStr in annotations) {
+                const pageAnnotations = annotations[pageNumStr];
+                const index = pageAnnotations.findIndex(a => a.id === annotationIdToDelete);
+                if (index > -1) {
+                    deletedAnnotationData = { ...pageAnnotations[index] }; 
+                    pageNumberOfDeletedAnnotation = parseInt(pageNumStr, 10);
+                    pageAnnotations.splice(index, 1);
+                    if (pageAnnotations.length === 0) {
+                        delete annotations[String(pageNumberOfDeletedAnnotation)];
+                    }
+                    found = true;
+                    break; 
+                }
+            }
+
+            if (found && deletedAnnotationData) {
+                console.log(`[performDeleteAnnotation] Successfully removed ${annotationIdToDelete} from data. Ann data was:`, JSON.stringify(deletedAnnotationData));
+                
+                const boxElement = document.getElementById(`bbox-${annotationIdToDelete}`);
+                if (boxElement) boxElement.remove();
+
+                if (selectedAnnotation === annotationIdToDelete) {
+                    deselectAnnotation();
+                }
                 markUnsavedChanges();
-                // Re-order the remaining annotations in the section
-                const pageAnns = getPageAnnotations(findPageForAnnotation(annId));
-                const sectionAnns = pageAnns.filter(ann => ann.section === findAnnotationById(annId)?.section).sort((a, b) => a.orderInSection - b.orderInSection);
-                sectionAnns.forEach((ann, index) => ann.orderInSection = index + 1);
-                redrawIdList();
+
+                const affectedSectionName = deletedAnnotationData.section;
+                if (affectedSectionName && sections[affectedSectionName]) {
+                    const sectionAnnotations = getAllAnnotations()
+                        .filter(ann => ann.section === affectedSectionName)
+                        .sort((a, b) => { 
+                            const orderA = a.orderInSection !== undefined ? parseInt(a.orderInSection, 10) : Infinity;
+                            const orderB = b.orderInSection !== undefined ? parseInt(b.orderInSection, 10) : Infinity;
+                            if (orderA !== orderB) return orderA - orderB;
+                            return (a.id || "").localeCompare(b.id || "", undefined, { numeric: true });
+                        });
+
+                    sectionAnnotations.forEach((ann, index) => {
+                        ann.orderInSection = index + 1; 
+                    });
+                    console.log(`[performDeleteAnnotation] Re-ordered section ${affectedSectionName}.`);
+                }
+
+                // DIAGNOSTIC LOG:
+                const stillExistsInGlobalData = getAllAnnotations().some(ann => ann.id === annotationIdToDelete);
+                console.log(`[performDeleteAnnotation] DIAGNOSTIC CHECK: Is ${annotationIdToDelete} still in global annotations after removal logic? ${stillExistsInGlobalData}`);
+
+                redrawIdList(); 
                 updateExportAndActionButtonsState();
-            } 
+                console.log(`[performDeleteAnnotation] Deletion process complete for ${annotationIdToDelete}.`);
+            } else {
+                console.warn(`[performDeleteAnnotation] Annotation ${annotationIdToDelete} not found or could not be deleted (found=${found}, deletedAnnotationData is ${deletedAnnotationData ? 'set' : 'null'}).`);
+            }
         }
 
         function handleClearAllAnnotations() { 
@@ -1218,12 +1288,30 @@
                         clA.appendChild(tyS);
                         
                         li.appendChild(clA); 
-                        const delB=document.createElement('button');
-                        delB.className='delete-btn icon-button'; // Add icon-button class
-                        delB.title='Delete Annotation';
-                        delB.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'; // Trash can icon
-                        delB.onclick=(e)=>{e.stopPropagation();deleteAnnotation(ann.id);}; // Stop propagation to prevent selecting annotation on delete click
-                        li.appendChild(delB);
+
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'delete-btn icon-button';
+                        deleteBtn.title = 'Delete Annotation';
+                        deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+                        deleteBtn.addEventListener('click', (e) => {
+                            e.stopPropagation(); // Prevent li click event
+                            // console.log(`[redrawIdList] Delete button clicked for annotationId: ${ann.id}`);
+                            deleteAnnotation(ann.id);
+                        });
+                        li.appendChild(deleteBtn);
+
+                        // The main click event for selection is now on clA (clickableArea)
+                        // So, this li event listener might be redundant if clA covers the whole area except the button.
+                        // If direct li clicks are still desired for selection (outside the button), it can be kept.
+                        // For now, let's assume clA handles selection clicks.
+                        // li.addEventListener('click', () => {
+                        //     console.log(`[redrawIdList] List item clicked for annotationId: ${ann.id}`);
+                        //     selectAnnotation(ann.id);
+                        // });
+
+                        // Drag and Drop Event Listeners for list items
+                        // These are already defined above for the li element.
+
                         ul.appendChild(li);
                     });
                     det.appendChild(ul);
@@ -1319,7 +1407,7 @@
             const sectionAnns = pageAnns.filter(ann => ann.section === sectionName);
 
             // Create a map for quick lookup
-            const annMap = new Map(sectionAnns.map(ann => [ann.id, ann]));
+            const annMap = new Map(sectionAnns.map(ann => [ann.id, ann])).
 
             orderedIds.forEach((id, index) => {
                 const ann = annMap.get(id);
@@ -1338,7 +1426,7 @@
         // --- Export Functions ---
         function toggleExportDropdown(){const m=DOMElements.exportOptionsMenu;m.style.display=m.style.display==='block'?'none':'block';} 
         DOMElements.exportDropdownToggleBtn.addEventListener('click',toggleExportDropdown); 
-        document.addEventListener('click',e=>{if(!DOMElements.exportDropdownToggleBtn.contains(e.target)&&!DOMElements.exportOptionsMenu.contains(e.target))DOMElements.exportOptionsMenu.style.display='none';});
+        document.addEventListener('click', e => { if (!DOMElements.exportDropdownToggleBtn.contains(e.target) && !DOMElements.exportOptionsMenu.contains(e.target)) DOMElements.exportOptionsMenu.style.display = 'none'; });
         
         function handleExportCsv(){
             toggleExportDropdown(); 
@@ -1421,12 +1509,12 @@
             const tsvRows = [header.join("\t")]; 
 
             anns.forEach(a=>{
-                const pN=findPageForAnnotation(a.id);
+                const pNFA=findPageForAnnotation(a.id);
                 const rowData = allSortedAttributeKeys.map(key => {
                     let value;
                     if (key === "Section") value = a.section;
                     else if (key === "ID") value = a.id;
-                    else if (key === "Page") value = pN;
+                    else if (key === "Page") value = pNFA;
                     else if (ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key]) { 
                         value = a[key];
                     } else {
@@ -1491,7 +1579,7 @@
                 const HEADER_BG_COLOR = rgb(0.9, 0.9, 0.9);
                 const ALT_ROW_BG_COLOR = rgb(0.95, 0.95, 0.95);
 
-                function drawWrap(txt,x,y,maxW,pg,fnt,sz){const wrds=String(txt).split(' ');let ln='',lD=0;for(let n=0;n<wrds.length;n++){const tL=ln+wrds[n]+' ';const tW=fnt.widthOfTextAtSize(tL,sz);if(tW>maxW&&n>0){pg.drawText(ln,{x,y:y-(lD*(sz*1.2)),font:fnt,size:sz,color:rgb(0,0,0)});ln=wrds[n]+' ';lD++;}else{ln=tL;}}pg.drawText(ln,{x,y:y-(lD*(sz*1.2)),font:fnt,size:sz,color:rgb(0,0,0)});return lD+1;} 
+                function drawWrap(txt,x,y,maxW,pg,fnt,sz){const wrds=String(txt).split(' ');let ln='',lD=0;for(let n=0;n<wrds.length;n++){const tL=ln+wrds[n]+' ';const tW=fnt.widthOfTextAtSize(tL,sz);if(tW>maxW&&n>0){pg.drawText(ln,{x:width/2-(fnt.widthOfTextAtSize(ln,sz)/2),y:y-(lD*(sz*1.2)),font:fnt,size:sz,color:rgb(0,0,0)});ln=wrds[n]+' ';lD++;}else{ln=tL;}}pg.drawText(ln,{x:width/2-(fnt.widthOfTextAtSize(ln,sz)/2),y:y-(lD*(sz*1.2)),font:fnt,size:sz,color:rgb(0,0,0)});return lD+1;} 
                 
                 Object.keys(sections).sort().forEach(secName=>{
                     const secAnns=getAllAnnotations().filter(a=>a.section===secName).sort((a,b)=>{const oA=a.orderInSection===undefined?Infinity:a.orderInSection;const oB=b.orderInSection===undefined?Infinity:b.orderInSection;if(oA!==oB)return oA-oB;return a.id.localeCompare(b.id,{numeric:true});});
@@ -1641,16 +1729,40 @@
 
             // NEW: Confirmation Modal Event Listeners
             DOMElements.closeConfirmationModal.addEventListener('click', () => {
+                console.log('[ModalEventListener] Close button clicked.');
+                const callback = confirmationCallback; // Capture before hiding
                 hideConfirmationModal();
-                if (confirmationCallback) confirmationCallback(false); // Call with false if closed without explicit choice
+                if (callback) {
+                    console.log('[ModalEventListener] Calling confirmationCallback(false) from close button.');
+                    callback(false); 
+                    console.log('[ModalEventListener] Called confirmationCallback(false) from close button.');
+                } else {
+                    console.log('[ModalEventListener] confirmationCallback was null for close button before hide.');
+                }
             });
             DOMElements.confirmNoBtn.addEventListener('click', () => {
+                console.log('[ModalEventListener] No button clicked.');
+                const callback = confirmationCallback; // Capture before hiding
                 hideConfirmationModal();
-                if (confirmationCallback) confirmationCallback(false);
+                if (callback) {
+                    console.log('[ModalEventListener] Calling confirmationCallback(false) from No button.');
+                    callback(false);
+                    console.log('[ModalEventListener] Called confirmationCallback(false) from No button.');
+                } else {
+                    console.log('[ModalEventListener] confirmationCallback was null for No button before hide.');
+                }
             });
             DOMElements.confirmYesBtn.addEventListener('click', () => {
+                console.log('[ModalEventListener] Yes button clicked.');
+                const callback = confirmationCallback; // Capture before hiding
                 hideConfirmationModal();
-                if (confirmationCallback) confirmationCallback(true);
+                if (callback) {
+                    console.log('[ModalEventListener] Calling confirmationCallback(true) from Yes button.');
+                    callback(true);
+                    console.log('[ModalEventListener] Called confirmationCallback(true) from Yes button.');
+                } else {
+                    console.log('[ModalEventListener] confirmationCallback was null for Yes button before hide.');
+                }
             });
         }
 
