@@ -1,0 +1,1667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Annotator</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+    <style>
+        :root {
+            --bg-primary: #202124;
+            --bg-secondary: #303134;
+            --bg-tertiary: #3c4043;
+            --text-primary: #e8eaed;
+            --text-secondary: #bdc1c6;
+            --accent-primary: #8ab4f8;
+            --accent-primary-transparent: rgba(138, 180, 248, 0.25);
+            --accent-success: #34a853;
+            --accent-danger: #ea4335;
+            --accent-warning: #fbbc04;
+            --border-color: #5f6368;
+            --panel-min-width: 200px; /* Adjusted min-width slightly */
+            --header-height: 60px;
+            --canvas-bg: #525659; 
+            --scrollbar-thumb: #5f6368;
+            --scrollbar-track: var(--bg-secondary);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* Custom Scrollbars */
+        /* Firefox */
+        html {
+            scrollbar-width: thin;
+            scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+        }
+        /* Webkit (Chrome, Safari, Edge) */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb); border-radius: 4px; border: 2px solid var(--scrollbar-track); /* Creates padding around thumb */ }
+        ::-webkit-scrollbar-thumb:hover { background-color: #7a7f83; }
+        ::-webkit-scrollbar-corner { background: transparent; }
+
+
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg-primary); color: var(--text-primary); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background-color: var(--bg-secondary); padding: 0 15px; height: var(--header-height); display: flex; align-items: center; flex-wrap: wrap; gap: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); z-index: 1000; }
+        header h1 { font-size: 1.4em; margin-right: auto; white-space: nowrap; flex-shrink: 0; }
+        button, select, input[type="file"]::-webkit-file-upload-button { background-color: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em; -webkit-appearance: none; appearance: none; vertical-align: middle; }
+        button:hover, select:hover, input[type="file"]::-webkit-file-upload-button:hover { background-color: #4a4c50; }
+        button:disabled, input[type="file"]:disabled::-webkit-file-upload-button { opacity: 0.5; cursor: not-allowed; }
+        
+        /* PDF Viewer Controls Bar - Reduced Height */
+        #pdf-viewer-controls { display: flex; align-items: center; gap: 8px; /* Reduced gap */ padding: 5px 15px; /* Reduced vertical padding */ background-color: var(--bg-secondary); border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+        #pdf-viewer-controls input[type="file"]#pdf-upload { color: transparent; width: auto; min-width: 110px; max-width: 130px; padding: 0; border: none; display: inline-block; vertical-align: middle; overflow: hidden; height: 30px; /* Reduced height */ }
+        #pdf-viewer-controls input[type="file"]#pdf-upload::-webkit-file-upload-button { margin: 0; height: 100%; width: 100%; padding: 5px 12px; /* Adjusted padding */ }
+        #pdf-viewer-controls button { padding: 5px 10px; /* Adjusted padding */ }
+        #pdf-viewer-controls #page-info-container { display: flex; align-items: center; gap: 5px; }
+        #pdf-viewer-controls #page-num-input { width: 50px; text-align: center; padding: 5px; /* Adjusted padding */ height: 30px; /* Reduced height */ }
+
+        #section-selector-controls, #export-dropdown-container { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        #active-section-select { border-left-width: 5px; transition: border-color 0.3s; min-width: 150px; height: 38px; /* Match other buttons */ }
+
+        .export-dropdown { position: relative; }
+        .export-dropdown-menu { display: none; position: absolute; top: 100%; right: 0; background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 1001; min-width: 200px; }
+        .export-dropdown-menu a { display: block; padding: 10px 15px; color: var(--text-primary); text-decoration: none; font-size: 0.9em; }
+        .export-dropdown-menu a:hover { background-color: var(--bg-tertiary); }
+        .export-dropdown-menu a.disabled { color: var(--text-secondary); cursor: not-allowed; pointer-events: none; }
+
+        #main-content { display: flex; flex-grow: 1; overflow: hidden; height: calc(100vh - var(--header-height)); }
+        .panel { overflow-y: auto; background-color: var(--bg-primary); display: flex; flex-direction: column; position: relative; }
+        #attributes-panel, #id-list-panel { padding: 15px; }
+        .panel-content-wrapper { flex-grow: 1; overflow-y: auto; }
+
+        /* Default Panel Widths */
+        #pdf-viewer { flex: 5 1 50%; /* Default 50% */ display: flex; flex-direction: column; background-color: var(--bg-primary); }
+        #attributes-panel { flex: 3 1 30%; /* Default 30% */ min-width: var(--panel-min-width); border-left: 1px solid var(--border-color); box-shadow: -2px 0 5px rgba(0,0,0,0.1); }
+        #id-list-panel { flex: 2 1 20%; /* Default 20% */ min-width: var(--panel-min-width); border-left: 1px solid var(--border-color); box-shadow: -2px 0 5px rgba(0,0,0,0.1); }
+        
+        #pdf-viewer-content-area { flex-grow: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; }
+        #canvas-container { position: relative; background-color: var(--canvas-bg); box-shadow: 0 0 10px rgba(0,0,0,0.5); margin: 20px; flex-shrink: 0; }
+        #pdf-canvas { display: block; }
+        #annotation-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; }
+
+        .bbox { position: absolute; border: 1px solid var(--accent-danger); background-color: rgba(234, 67, 53, 0.25); cursor: grab; z-index: 10; }
+        .bbox.selected { border-width: 2px; z-index: 20; }
+        .bbox.dragging { cursor: grabbing; border-style: solid; border-color: var(--accent-warning) !important; }
+        .bbox.drawing-temp { border: 2px dashed var(--accent-primary); background-color: var(--accent-primary-transparent); cursor: crosshair; z-index: 100; }
+
+        .resize-handle { position: absolute; width: 8px; height: 8px; background-color: var(--accent-primary); border: 1px solid var(--text-primary); z-index: 30; display: none; }
+        .bbox.selected .resize-handle { display: block; }
+        .handle-nw { top: -4px; left: -4px; cursor: nwse-resize; } .handle-n { top: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .handle-ne { top: -4px; right: -4px; cursor: nesw-resize; } .handle-w { top: 50%; left: -4px; transform: translateY(-50%); cursor: ew-resize; } .handle-e { top: 50%; right: -4px; transform: translateY(-50%); cursor: ew-resize; } .handle-sw { bottom: -4px; left: -4px; cursor: nesw-resize; } .handle-s { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: ns-resize; } .handle-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+        .panel-toggle-button { display: none; }
+        #attributes-panel.panel-collapsed, #id-list-panel.panel-collapsed { flex-basis: var(--panel-min-width); min-width: var(--panel-min-width); }
+        .panel-resizer { flex-basis: 8px; flex-shrink: 0; flex-grow: 0; background-color: var(--bg-tertiary); cursor: col-resize; z-index: 50; }
+        .panel-resizer:hover { background-color: var(--accent-primary); }
+
+        #attributes-panel-placeholder { text-align: center; margin-top: 20px; color: var(--text-secondary); }
+        #section-form-container, #annotation-attributes-form { margin-top: 15px; }
+        #section-form-container h3, #annotation-attributes-form h3 { margin-bottom: 15px; }
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; margin-bottom: 5px; font-size: 0.9em; }
+        input[type="text"], input[type="number"]:not(#page-num-input), textarea, select:not(#active-section-select) { background-color: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; width: 100%; }
+        input[type="color"] { min-height: 38px; }
+        .form-buttons { margin-top: 15px; display: flex; gap: 10px; justify-content: flex-start; align-items: center;}
+        #delete-section-btn { background-color: var(--accent-danger); color: white; margin-left: auto; } 
+        #delete-section-btn:hover { background-color: #c5372c; }
+        #attributes-status { margin-left: auto; font-size: 0.85em; }
+
+        /* Section Attribute Configuration */
+        .attribute-config-group {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+        .attribute-config-group h4 {
+            margin-bottom: 10px;
+            color: var(--accent-primary);
+        }
+        .attribute-config-group .template-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .attribute-config-group .template-buttons button {
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+        .attribute-checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Responsive grid */
+            gap: 8px;
+            padding: 5px 0;
+            max-height: 200px; /* Limit height and add scroll */
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .attribute-checkbox-grid .checkbox-item {
+            display: flex;
+            align-items: center;
+            font-size: 0.9em;
+            cursor: pointer;
+            padding: 4px 0; /* Adjusted padding */
+        }
+        .attribute-checkbox-grid .checkbox-item input[type="checkbox"] {
+            width: 16px; /* Smaller size */
+            height: 16px; /* Smaller size */
+            min-width: 16px; /* Ensure it stays this size */
+            min-height: 16px; /* Ensure it stays this size */
+            margin-right: 8px; /* Adjusted margin */
+            cursor: pointer;
+            flex-shrink: 0; /* Prevent shrinking */
+            transform: none; /* Remove previous scale */
+        }
+        .attribute-checkbox-grid .checkbox-item label {
+            display: inline-block;
+            margin-bottom: 0;
+            cursor: pointer;
+            flex-grow: 1;
+            line-height: 16px; /* Align text with checkbox */
+        }
+
+
+        /* Dynamic Annotation Attributes Form */
+        #annotation-attributes-form .form-group.conditional {
+            background-color: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        #annotation-attributes-form .form-group.conditional .sub-section-title {
+            font-weight: bold;
+            margin-top: 5px;
+            margin-bottom: 5px;
+            color: var(--accent-primary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+        }
+        /* Specific styling for checkboxes within the dynamic annotation form */
+        #dynamic-attributes-container input[type="checkbox"] {
+            width: 20px; /* Larger size */
+            height: 20px; /* Larger size */
+            min-width: 20px;
+            min-height: 20px;
+            margin-right: 10px; /* Adjusted margin */
+            cursor: pointer;
+            flex-shrink: 0;
+            transform: none; /* Ensure no scaling interferes */
+        }
+        #dynamic-attributes-container .form-group label[for^="attr-dynamic-"] {
+            line-height: 20px; /* Align text with checkbox */
+        }
+
+        /* Simple Confirmation Modal */
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed; /* Stay in place */
+            z-index: 1002; /* Sit on top */
+            left: 0;
+            top: 0;
+            width: 100%; /* Full width */
+            height: 100%; /* Full height */
+            overflow: auto; /* Enable scroll if needed */
+            background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
+        }
+        .modal-content {
+            background-color: var(--bg-primary);
+            margin: 10% auto; /* 10% from the top and centered */
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            width: 90%; /* Could be more responsive */
+            max-width: 500px; /* Max width */
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 15px;
+        }
+        .modal-header h2 { margin: 0; }
+        .close-button {
+            color: var(--text-secondary);
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: var(--text-primary);
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .modal-body { flex-grow: 1; overflow-y: auto; }
+        .modal-footer {
+            padding-top: 15px;
+            border-top: 1px solid var(--border-color);
+            margin-top: 15px;
+            text-align: right;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .modal-footer button {
+            padding: 8px 15px;
+        }
+        #confirm-yes-btn {
+            background-color: var(--accent-danger);
+            color: white;
+        }
+        #confirm-yes-btn:hover {
+            background-color: #c5372c;
+        }
+
+        /* Icon styling */
+        .icon-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 10px; /* Adjust padding for icons */
+            vertical-align: middle;
+        }
+        .icon-button svg {
+            width: 18px; /* Default icon size */
+            height: 18px;
+            fill: currentColor; /* Inherit color from button text */
+            flex-shrink: 0;
+        }
+        .icon-button span {
+            margin-left: 6px; /* Space between icon and text if both exist */
+        }
+        /* Specific icon adjustments */
+        #pdf-viewer-controls button.icon-button svg {
+            width: 16px;
+            height: 16px;
+        }
+        #export-dropdown-toggle-btn.icon-button svg {
+            width: 16px;
+            height: 16px;
+            margin-right: 4px;
+        }
+        #export-dropdown-toggle-btn.icon-button svg:last-child { /* For the dropdown arrow */
+            width: 12px;
+            height: 12px;
+            margin-left: 4px;
+            margin-right: 0;
+        }
+        .delete-btn.icon-button svg {
+            width: 16px; /* Smaller trash can */
+            height: 16px;
+            margin: 0; /* No margin for standalone icon */
+        }
+        .edit-section-btn.icon-button svg,
+        .copy-section-btn.icon-button svg {
+            width: 16px; /* Smaller icons in summary */
+            height: 16px;
+            margin: 0;
+        }
+        #id-list-controls .icon-button svg {
+            width: 16px; /* Smaller icons in header list */
+            height: 16px;
+        }
+
+
+        #id-list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        #id-list-header h3 { margin: 0; flex-grow: 1; }
+        #id-list-controls { display: flex; gap: 5px; flex-wrap: nowrap; flex-shrink: 0; }
+        #id-list-controls button { font-size: 0.8em; padding: 5px 8px; flex-shrink: 0; white-space: nowrap; }
+        #id-list details { margin-bottom: 5px; border: 1px solid var(--border-color); border-radius: 4px; }
+        #id-list summary { padding: 8px; background-color: var(--bg-secondary); cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        #id-list summary:hover { background-color: var(--bg-tertiary); }
+        .section-color-chip { width: 12px; height: 12px; display: inline-block; border: 1px solid var(--text-primary); flex-shrink: 0; }
+        #id-list summary .edit-section-btn, #id-list summary .copy-section-btn { margin-left: auto; font-size: 0.8em; padding: 3px 6px; }
+        #id-list summary .copy-section-btn { margin-left: 5px; }
+        #id-list ul { list-style-type: none; padding: 5px 0; margin: 0; background-color: var(--bg-primary); }
+        #id-list li.id-list-item { 
+            padding: 6px 10px; 
+            border-bottom: 1px solid var(--bg-secondary); 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            cursor: grab; /* Indicate draggable */
+            font-size: 0.9em; 
+        }
+        #id-list li.id-list-item:last-child { border-bottom: none; }
+        #id-list li.id-list-item:hover { background-color: var(--bg-tertiary); }
+        #id-list li.id-list-item.list-item-highlighted { background-color: var(--accent-primary); color: var(--bg-primary); }
+        #id-list li.id-list-item.dragging { opacity: 0.5; border: 2px dashed var(--accent-primary); } /* Visual feedback for dragging */
+        #id-list li.id-list-item.drag-over { border-top: 2px solid var(--accent-warning); } /* Visual feedback for drag target */
+        
+        .list-item-clickable-area { display: flex; flex-direction: row; align-items: center; gap: 8px; flex-grow: 1; overflow: hidden; }
+        .list-item-order { font-weight: bold; flex-shrink: 0; min-width: 30px; } /* For step number */
+        .list-item-id-hidden { display: none; } /* Hide the full ID from direct view */
+        .list-item-label { font-size: 0.85em; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 50px; }
+        .list-item-type { font-size: 0.85em; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; margin-left: auto; }
+        #id-list li.id-list-item.list-item-highlighted .list-item-label,
+        #id-list li.id-list-item.list-item-highlighted .list-item-type { color: var(--bg-secondary); }
+        
+        .delete-btn { background-color: var(--accent-danger); color: white; border: none; font-size: 0.8em; padding: 4px 8px; margin-left: 10px; flex-shrink: 0; }
+        .delete-btn:hover { background-color: #c5372c; }
+
+        @media (max-width: 1050px) { header { gap: 10px; } }
+        @media (max-width: 900px) { 
+            header { height: auto; padding: 10px; } 
+            header h1 { margin-bottom: 10px; width: 100%; text-align: center;} 
+            #main-content { flex-direction: column; height: calc(100vh - auto); } 
+            #pdf-viewer, #attributes-panel, #id-list-panel { flex-basis: auto !important; width: 100%; min-height: 200px; border-left: none; border-top: 1px solid var(--border-color); } 
+            #pdf-viewer-controls { flex-wrap: wrap; justify-content: center; padding: 8px; height: auto; /* Allow wrap */ } 
+             #pdf-viewer-controls input[type="file"]#pdf-upload { height: auto; /* Adjust height for wrap */ }
+             #pdf-viewer-controls #page-info-container { order: -1; width: 100%; justify-content: center; margin-bottom: 5px; }
+            #pdf-viewer { flex-grow: 1; } 
+            .panel-resizer { display: none !important; } 
+            #attributes-panel.panel-collapsed, #id-list-panel.panel-collapsed { min-height: 0; height: 0; padding: 0; border-top: none; } 
+            #attributes-panel.panel-collapsed .panel-content-wrapper, #id-list-panel.panel-collapsed .panel-content-wrapper { display: none; } 
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>PDF Annotator</h1>
+        <button id="clear-annotations" class="icon-button" title="Clear All Annotations">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            <span>Clear All</span>
+        </button>
+        <div id="section-selector-controls">
+            <label for="active-section-select">Active Section:</label>
+            <select id="active-section-select"></select>
+            <button id="new-section-btn" class="icon-button" title="New Section">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                <span>New Section</span>
+            </button>
+        </div>
+        <div id="export-dropdown-container" class="export-dropdown">
+            <button id="export-dropdown-toggle-btn" class="icon-button" title="Export Options">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V5h2v7.67z"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+            </button>
+            <div class="export-dropdown-menu" id="export-options-menu">
+                <a href="#" id="export-csv-link">Export CSV</a>
+                <a href="#" id="export-pdf-savenresume-link">Export PDF (Save & Resume)</a>
+                <a href="#" id="export-pdf-tables-link">Export PDF (with Tables)</a>
+            </div>
+        </div>
+    </header>
+
+    <main id="main-content">
+        <div id="pdf-viewer" class="panel">
+            <div id="pdf-viewer-controls">
+                <input type="file" id="pdf-upload" accept=".pdf">
+                <button id="prev-page" class="icon-button" title="Previous Page">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                </button>
+                <span id="page-info-container">
+                    <span id="page-info">Page - of -</span>
+                    <input type="number" id="page-num-input" min="1">
+                    <button id="goto-page-btn">Go</button>
+                </span>
+                <button id="next-page" class="icon-button" title="Next Page">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                </button>
+            </div>
+            <div id="pdf-viewer-content-area">
+                <div id="canvas-container">
+                    <canvas id="pdf-canvas"></canvas>
+                    <div id="annotation-layer"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-resizer" id="resizer-va"></div>
+
+        <div id="attributes-panel" class="panel">
+            <div class="panel-content-wrapper">
+                <div id="attributes-panel-placeholder">Select an annotation or create/edit a section to see details here.</div>
+                <div id="section-form-container" style="display: none;">
+                    <h3 id="section-form-title-alt">Create New Section</h3>
+                    <input type="hidden" id="editing-section-original-name">
+                    <div class="form-group"><label for="new-section-name">Section Name:</label><input type="text" id="new-section-name"></div>
+                    <div class="form-group"><label for="new-section-prefix">ID Prefix (e.g., PI):</label><input type="text" id="new-section-prefix" maxlength="10" pattern="[a-zA-Z0-9_-]+"></div>
+                    <div class="form-group"><label for="new-section-color">Color:</label><input type="color" id="new-section-color" value="#FF0000"></div>
+                    
+                    <div class="attribute-config-group">
+                        <h4>Configure Data Fields for this Section:</h4>
+                        <div class="template-buttons">
+                            <button id="template-general-field-btn">General Field</button>
+                            <button id="template-erp-mapped-btn">ERP Mapped Field</button>
+                            <button id="template-calculated-btn">Calculated Field</button>
+                            <button id="template-clear-all-attributes-btn">Clear All</button>
+                        </div>
+                        <div id="section-attribute-checkboxes" class="attribute-checkbox-grid">
+                            </div>
+                    </div>
+
+                    <div class="form-buttons">
+                        <button id="save-section-btn">Create</button>
+                        <button id="cancel-section-btn">Cancel</button>
+                        <button id="delete-section-btn" class="icon-button" title="Delete Section">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                            <span>Delete Section</span>
+                        </button> 
+                    </div>
+                </div>
+                <div id="annotation-attributes-form" style="display: none;">
+                    <h3 id="annotation-form-title">Attributes for [ID]</h3>
+                    <input type="hidden" id="editing-annotation-id">
+                    <div id="dynamic-attributes-container" class="form-body" style="max-height: calc(100vh - 250px); overflow-y: auto;">
+                        </div>
+                     <div class="form-buttons"><span id="attributes-status"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-resizer" id="resizer-va"></div>
+
+        <div id="id-list-panel" class="panel">
+            <div class="panel-content-wrapper">
+                <div id="id-list-header">
+                    <h3>Generated Element IDs</h3>
+                    <div id="id-list-controls">
+                        <button id="copy-all-sections-btn" class="icon-button" title="Copy All Sections">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                            <span>Copy All</span>
+                        </button>
+                        <button id="expand-all-btn" class="icon-button" title="Expand All">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z"/></svg>
+                            <span>Expand</span>
+                        </button>
+                        <button id="collapse-all-btn" class="icon-button" title="Collapse All">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 10l-6 6-6-6 1.41-1.41L12 13.17l4.59-4.58z"/></svg>
+                            <span>Collapse</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="id-list" style="max-height: calc(100vh - 180px); overflow-y: auto;"></div>
+            </div>
+        </div>
+    </main>
+
+    <div id="confirmation-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="confirmation-modal-title">Confirm Action</h2>
+                <span class="close-button" id="close-confirmation-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="confirmation-modal-message">Are you sure you want to proceed?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="confirm-yes-btn">Yes</button>
+                <button id="confirm-no-btn">No</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const { PDFDocument, rgb, StandardFonts, PDFFont, PDFName, PDFString, degrees } = PDFLib;
+        const EMBEDDED_STATE_KEY = "com.pdfannotator.state.v1", WATERMARK_TEXT = "Annotated with PDF Annotator", MIN_BOX_SIZE = 5, ATTRIBUTE_AUTOSAVE_DEBOUNCE_MS = 1000;
+        
+        // --- CONSTANTS (Moved to top for proper initialization) ---
+        const DEFAULT_SECTION_COLORS = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FED766", "#247BA0", "#F07C3E", "#8A6FBF", "#2AB7CA", "#FADE70", "#E8847C"];
+        
+        // NEW: Centralized schema for all possible annotation attributes (SME-friendly)
+        const ALL_ANNOTATION_ATTRIBUTES_SCHEMA = {
+            // Standard Attributes (renamed/simplified for SME)
+            orderInSection: { fieldName: "Order in Section", inputType: "number", description: "Numerical order within the section." },
+            labelText: { fieldName: "Field Name / Question", inputType: "text", description: "Descriptive name or question text for this data point." },
+            componentType: { fieldName: "Component Type", inputType: "select", options: ["Text Input", "Text Area", "Dropdown", "Multi-select Dropdown", "Radio Button", "Checkbox", "Date Picker", "Time Picker", "Date/Time Picker", "Label/Static Text", "Number Input", "Password Input", "File Input", "Button", "Image", "Electronic Signature Pad/Workflow"], description: "How the user will input/view this data." },
+            dataType: { fieldName: "Data Type", inputType: "select", options: ["String", "Number", "Date", "Boolean", "Email", "Phone", "URL", "Array", "Object", "File Path"], description: "The type of data expected (e.g., text, number, date)." },
+            isRequired: { fieldName: "Is Required?", inputType: "checkbox", description: "Is this field mandatory to be filled?" },
+            options: { fieldName: "Options (for Dropdown/Checkbox)", inputType: "textarea", description: "Semicolon-separated values (e.g., 'Yes;No;N/A').", conditionalOn: { componentType: ["Dropdown", "Multi-select Dropdown", "Radio Button", "Checkbox"] }},
+            notes: { fieldName: "Notes / Comments", inputType: "textarea", description: "Any additional notes or comments about this field." },
+            
+            // NEW: EBR-specific Attributes (SME-focused)
+            originalDataLocation: { fieldName: "Original Data Location (Paper)", inputType: "text", description: "Where is this data found on the paper batch record? (e.g., 'Page 3, Section A.1', 'Printed Label')" },
+            destinationDataLocation: { fieldName: "Destination Data Location (EBR)", inputType: "text", description: "Where will this data be stored in the new EBR system? (e.g., 'ebr_batches.batch_id', 'json_payload.material_data.lot_number')" },
+            isCalculatedValue: { fieldName: "Is Calculated Value?", inputType: "checkbox", description: "Is the value for this field derived from other fields or logic?" },
+            calculationLogic: { fieldName: "Calculation Logic", inputType: "textarea", description: "Describe how this value is calculated. (e.g., 'Batch Size * Component Ratio')", conditionalOn: { isCalculatedValue: true }},
+            dependentFieldNames: { fieldName: "Depends On Fields (Names)", inputType: "text", description: "Comma-separated Field Names of other data fields this calculation relies on. (e.g., 'Batch Size', 'Component Ratio')", conditionalOn: { isCalculatedValue: true }},
+            targetErpSystem: { fieldName: "Target ERP System", inputType: "text", description: "Which ERP system will this data eventually integrate with? (e.g., 'SAP S/4HANA', 'Oracle Fusion')" },
+            erpFieldNamePath: { fieldName: "ERP Field Name/Path (For Developer)", inputType: "text", description: "The exact field path or name in the ERP system. (e.g., 'MARA-MATNR', 'Z_BATCH_RECORD_TABLE.BATCH_NUM')" },
+            validationRules: { fieldName: "Validation Rules (For Developer)", inputType: "text", description: "Simple rules for the developer to implement. (e.g., 'Must be numeric', 'Min 5, Max 10 chars')." },
+            isReadOnly: { fieldName: "Read Only?", inputType: "checkbox", description: "Should this field be read-only in the EBR system?" } // Moved here as it's more specific than a core attribute
+        };
+
+        // Predefined templates for section attribute selection
+        const ATTRIBUTE_TEMPLATES = {
+            'general-field': ['orderInSection', 'labelText', 'componentType', 'dataType', 'isRequired', 'notes'],
+            'erp-mapped': ['orderInSection', 'labelText', 'componentType', 'dataType', 'isRequired', 'notes', 'originalDataLocation', 'destinationDataLocation', 'targetErpSystem', 'erpFieldNamePath', 'validationRules', 'isReadOnly'],
+            'calculated': ['orderInSection', 'labelText', 'componentType', 'dataType', 'isRequired', 'notes', 'isCalculatedValue', 'calculationLogic', 'dependentFieldNames'],
+            'all-fields': Object.keys(ALL_ANNOTATION_ATTRIBUTES_SCHEMA) // NEW: Template for all fields
+        };
+
+        // --- END CONSTANTS ---
+
+        let currentDefaultColorIndex = 0, pdfDoc = null, originalPdfRawBytes = null, currentPageNum = 1, totalNumPages = 0, currentScale = 1.0;
+        let sections = {}, annotations = {}, selectedAnnotation = null, currentSectionName = null;
+        
+        let isDrawing = false, drawingStartCoords = { x: 0, y: 0 }, tempDrawingBox = null;
+        let isDragging = false, isResizing = false, dragOffset = { x: 0, y: 0 }, resizeHandleType = null, originalBoxRect = null;
+        let hasUnsavedChanges = false, debouncedAutoSaveAttributes;
+
+        // NEW: Drag and Drop variables
+        let draggedItem = null;
+
+        // Global variable to store confirmation callback
+        let confirmationCallback = null;
+
+
+        const DOMElements = { // Cache DOM elements
+            clearAnnotationsBtn:document.getElementById('clear-annotations'), activeSectionSelect:document.getElementById('active-section-select'), newSectionBtn:document.getElementById('new-section-btn'), exportDropdownToggleBtn:document.getElementById('export-dropdown-toggle-btn'), exportOptionsMenu:document.getElementById('export-options-menu'), exportCsvLink:document.getElementById('export-csv-link'), exportPdfSaveResumeLink:document.getElementById('export-pdf-savenresume-link'), exportPdfTablesLink:document.getElementById('export-pdf-tables-link'), pdfUpload:document.getElementById('pdf-upload'), prevPageBtn:document.getElementById('prev-page'), pageInfo:document.getElementById('page-info'), pageNumInput:document.getElementById('page-num-input'), gotoPageBtn:document.getElementById('goto-page-btn'), nextPageBtn:document.getElementById('next-page'), pdfViewer:document.getElementById('pdf-viewer'), pdfViewerControls:document.getElementById('pdf-viewer-controls'), pdfViewerContentArea:document.getElementById('pdf-viewer-content-area'), canvasContainer:document.getElementById('canvas-container'), pdfCanvas:document.getElementById('pdf-canvas'), annotationLayer:document.getElementById('annotation-layer'), attributesPanel:document.getElementById('attributes-panel'), attributesPanelPlaceholder:document.getElementById('attributes-panel-placeholder'), sectionFormContainer:document.getElementById('section-form-container'), sectionFormTitle:document.getElementById('section-form-title-alt'), editingSectionOriginalNameInput:document.getElementById('editing-section-original-name'), newSectionNameInput:document.getElementById('new-section-name'), newSectionPrefixInput:document.getElementById('new-section-prefix'), newSectionColorInput:document.getElementById('new-section-color'), saveSectionBtn:document.getElementById('save-section-btn'), cancelSectionBtn:document.getElementById('cancel-section-btn'), deleteSectionBtn:document.getElementById('delete-section-btn'), 
+            annotationAttributesForm:document.getElementById('annotation-attributes-form'), annotationFormTitle:document.getElementById('annotation-form-title'), editingAnnotationIdInput:document.getElementById('editing-annotation-id'),
+            dynamicAttributesContainer: document.getElementById('dynamic-attributes-container'), // NEW: For dynamic form
+            attributesStatus:document.getElementById('attributes-status'), 
+            idListPanel:document.getElementById('id-list-panel'), copyAllSectionsBtn:document.getElementById('copy-all-sections-btn'), expandAllBtn:document.getElementById('expand-all-btn'), collapseAllBtn:document.getElementById('collapse-all-btn'), idListContainer:document.getElementById('id-list'), resizerVA:document.getElementById('resizer-va'), resizerAL:document.getElementById('resizer-al'),
+            
+            // NEW: Section Attribute Configuration Elements
+            sectionAttributeCheckboxes: document.getElementById('section-attribute-checkboxes'),
+            templateGeneralFieldBtn: document.getElementById('template-general-field-btn'),
+            templateErpMappedBtn: document.getElementById('template-erp-mapped-btn'),
+            templateCalculatedBtn: document.getElementById('template-calculated-btn'),
+            templateClearAllAttributesBtn: document.getElementById('template-clear-all-attributes-btn'),
+
+            // NEW: Confirmation Modal Elements
+            confirmationModal: document.getElementById('confirmation-modal'),
+            closeConfirmationModal: document.getElementById('close-confirmation-modal'),
+            confirmationModalTitle: document.getElementById('confirmation-modal-title'),
+            confirmationModalMessage: document.getElementById('confirmation-modal-message'),
+            confirmYesBtn: document.getElementById('confirm-yes-btn'),
+            confirmNoBtn: document.getElementById('confirm-no-btn')
+        };
+        const ctx = DOMElements.pdfCanvas.getContext('2d');
+
+        // --- Utility Functions ---
+        function debounce(func, delay) { let timeout; return function(...args) { const context = this; clearTimeout(timeout); timeout = setTimeout(() => func.apply(context, args), delay); }; }
+        function markUnsavedChanges(isUnsaved = true) { hasUnsavedChanges = isUnsaved; if (isUnsaved) { if (!document.title.startsWith('* ')) document.title = "* " + document.title; } else { if (document.title.startsWith('* ')) document.title = document.title.substring(2); } updateExportAndActionButtonsState(); }
+        function formatDateForFilename() { const d = new Date(); return `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}_${d.getHours().toString().padStart(2,'0')}${d.getMinutes().toString().padStart(2,'0')}`; }
+        function getNextDefaultColor() { const color = DEFAULT_SECTION_COLORS[currentDefaultColorIndex]; currentDefaultColorIndex = (currentDefaultColorIndex + 1) % DEFAULT_SECTION_COLORS.length; return color; }
+        function getPageAnnotations(pageNum) { return annotations[String(pageNum)] || []; }
+        function getAllAnnotations() { let all = []; Object.values(annotations).forEach(pageAnns => all = all.concat(pageAnns)); return all; }
+        function isIdUnique(idToCheck) { return !getAllAnnotations().some(ann => ann.id === idToCheck); }
+        function hexToRgb(hex) { const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex); return r ? {r:parseInt(r[1],16),g:parseInt(r[2],16),b:parseInt(r[3],16)}:null;}
+        function findAnnotationById(id) { for(const pN in annotations){const f = annotations[pN].find(a=>a.id===id); if(f)return f;} return null; }
+        function findPageForAnnotation(id) { for(const pNS in annotations){if(annotations[pNS].some(a=>a.id===id))return parseInt(pNS,10);} return null; }
+        function triggerDownload(blob,filename){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);}
+        
+        // --- Confirmation Modal Functions ---
+        function showConfirmationModal(title, message, onConfirm) {
+            DOMElements.confirmationModalTitle.textContent = title;
+            DOMElements.confirmationModalMessage.textContent = message;
+            confirmationCallback = onConfirm;
+            DOMElements.confirmationModal.style.display = 'block';
+        }
+
+        function hideConfirmationModal() {
+            DOMElements.confirmationModal.style.display = 'none';
+            confirmationCallback = null;
+        }
+
+        // --- Initialization ---
+        function initializeApp() { 
+            initDefaultSection(); 
+            updateActiveSectionDropdown(); 
+            updatePageControls(); 
+            updateExportAndActionButtonsState(); 
+            initResizers(); 
+            debouncedAutoSaveAttributes = debounce(performAutoSaveAttributes, ATTRIBUTE_AUTOSAVE_DEBOUNCE_MS); 
+            setupEventListeners(); 
+            renderSectionAttributeCheckboxes(); // Render checkboxes once on load
+        }
+        function initDefaultSection() { 
+            if (Object.keys(sections).length === 0) { 
+                const defaultName = "Default Section"; 
+                // Initialize default section with ALL attributes selected
+                sections[defaultName] = { 
+                    prefix: "ELEM", 
+                    nextId: 1, 
+                    color: getNextDefaultColor(), 
+                    activeAttributeKeys: ATTRIBUTE_TEMPLATES['all-fields'] // Set to all fields by default
+                }; 
+                currentSectionName = defaultName; 
+            } else if (!currentSectionName && Object.keys(sections).length > 0) { 
+                currentSectionName = Object.keys(sections)[0]; 
+            }
+             // Ensure existing sections have activeAttributeKeys for backward compatibility and default
+             for (const sName in sections) {
+                if (!sections[sName].activeAttributeKeys) {
+                    sections[sName].activeAttributeKeys = ATTRIBUTE_TEMPLATES['all-fields']; // Assign all fields template if missing
+                }
+             }
+        }
+
+        // --- PDF Handling ---
+        async function handlePdfUpload(event) { const file = event.target.files[0]; if (!file || file.type !== "application/pdf") { alert("Please select a valid PDF file."); DOMElements.pdfUpload.value = ""; return; } if (hasUnsavedChanges && !confirm("Loading a new PDF will discard unsaved changes. Continue?")) { DOMElements.pdfUpload.value = ""; return; } const reader = new FileReader(); reader.onload = async (e) => { originalPdfRawBytes = e.target.result; await loadPdf(originalPdfRawBytes); }; reader.readAsArrayBuffer(file); DOMElements.pdfUpload.value = ""; }
+        async function loadPdf(pdfDataArrayBuffer) { 
+            try { 
+                pdfDoc = null; currentPageNum = 1; totalNumPages = 0; annotations = {}; selectedAnnotation = null; clearAnnotationDisplay(); 
+                
+                const loadingTask = pdfjsLib.getDocument({ data: pdfDataArrayBuffer.slice(0) }); 
+                pdfDoc = await loadingTask.promise; totalNumPages = pdfDoc.numPages; 
+                let loadedState = false; 
+                try { 
+                    const pdfLibDoc = await PDFDocument.load(pdfDataArrayBuffer.slice(0)); 
+                    const embeddedStateRaw = pdfLibDoc.catalog.get(PDFName.of(EMBEDDED_STATE_KEY)); 
+                    if (embeddedStateRaw && embeddedStateRaw instanceof PDFString) { 
+                        const parsedState = JSON.parse(embeddedStateRaw.asString()); 
+                        if (parsedState.sections && parsedState.annotations) { 
+                            sections = parsedState.sections; 
+                            annotations = parsedState.annotations; 
+                            
+                            // Ensure all annotations have all possible EBR attributes initialized (for old PDFs)
+                            getAllAnnotations().forEach(ann => {
+                                for (const key in ALL_ANNOTATION_ATTRIBUTES_SCHEMA) {
+                                    if (ALL_ANNOTATION_ATTRIBUTES_SCHEMA.hasOwnProperty(key) && ann[key] === undefined) {
+                                        // Initialize new attributes to default empty values
+                                        const schema = ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key];
+                                        if (schema.inputType === 'checkbox') {
+                                            ann[key] = schema.defaultValue !== undefined ? schema.defaultValue : false;
+                                        } else {
+                                            ann[key] = schema.defaultValue !== undefined ? schema.defaultValue : '';
+                                        }
+                                    }
+                                }
+                            });
+                             // Ensure sections have activeAttributeKeys property for backward compatibility
+                            for (const sName in sections) {
+                                if (!sections[sName].activeAttributeKeys) {
+                                    sections[sName].activeAttributeKeys = ATTRIBUTE_TEMPLATES['all-fields']; // Assign all fields template if missing
+                                }
+                            }
+                            calculateNextIdsAfterLoad(); 
+                            loadedState = true; 
+                        }
+                    } 
+                } catch (err) { 
+                    console.warn("Could not read embedded state:", err); 
+                } 
+                if (!loadedState) { 
+                    sections = {}; 
+                    initDefaultSection(); 
+                } 
+                markUnsavedChanges(false); /* Reset saved status on load */ 
+                updateActiveSectionDropdown(); 
+                await renderPage(currentPageNum); 
+                redrawIdList(); 
+                updateExportAndActionButtonsState(); 
+            } catch (error) { 
+                console.error("Error loading PDF:", error); 
+                alert(`Failed to load PDF: ${error.message}`); 
+                resetUI(); 
+            } 
+        }
+        function calculateNextIdsAfterLoad() { for (const sectionName in sections) { if (sections.hasOwnProperty(sectionName)) { const section = sections[sectionName]; let maxIdNum = 0; getAllAnnotations().forEach(ann => { if (ann.section === sectionName) { const numPart = parseInt(ann.id.split('-').pop(), 10); if (!isNaN(numPart) && numPart > maxIdNum) maxIdNum = numPart; } }); section.nextId = maxIdNum + 1; } } }
+        async function renderPage(pageNum) { if (!pdfDoc || pageNum < 1 || pageNum > totalNumPages) return; deselectAnnotation(); currentPageNum = pageNum; DOMElements.pdfCanvas.style.opacity = '0.5'; try { const page = await pdfDoc.getPage(pageNum); const viewerWidth = DOMElements.pdfViewerContentArea.clientWidth - 40; const unscaledViewport = page.getViewport({ scale: 1 }); currentScale = viewerWidth > 0 ? viewerWidth / unscaledViewport.width : 1.0; if (currentScale <=0 ) currentScale = 1.0; const viewport = page.getViewport({ scale: currentScale }); DOMElements.pdfCanvas.height = viewport.height; DOMElements.pdfCanvas.width = viewport.width; DOMElements.annotationLayer.style.width = `${viewport.width}px`; DOMElements.annotationLayer.style.height = `${viewport.height}px`; await page.render({ canvasContext: ctx, viewport: viewport }).promise; redrawAnnotationsForPage(pageNum); DOMElements.pdfCanvas.style.opacity = '1'; } catch (error) { console.error("Error rendering page:", error); DOMElements.pdfCanvas.style.opacity = '1';} updatePageControls(); }
+        function redrawAnnotationsForPage(pageNum) { clearAnnotationDisplay(); getPageAnnotations(pageNum).forEach(annData => createAnnotationBoxElement(annData)); }
+        function clearAnnotationDisplay() { DOMElements.canvasContainer.querySelectorAll('.bbox').forEach(box => box.remove()); }
+        function updatePageControls() { 
+            const hasPdf = !!pdfDoc; 
+            DOMElements.pageInfo.textContent = hasPdf ? `Page ${currentPageNum} of ${totalNumPages}` : "Page - of -"; 
+            DOMElements.pageNumInput.value = hasPdf ? currentPageNum : ""; 
+            DOMElements.pageNumInput.max = hasPdf ? totalNumPages : 1; 
+            DOMElements.prevPageBtn.disabled = !hasPdf || (currentPageNum <= 1); 
+            DOMElements.nextPageBtn.disabled = !hasPdf || (currentPageNum >= totalNumPages); 
+            DOMElements.gotoPageBtn.disabled = !hasPdf; 
+
+            // Update icon buttons state
+            DOMElements.prevPageBtn.querySelector('svg').style.fill = DOMElements.prevPageBtn.disabled ? 'var(--text-secondary)' : 'var(--text-primary)';
+            DOMElements.nextPageBtn.querySelector('svg').style.fill = DOMElements.nextPageBtn.disabled ? 'var(--text-secondary)' : 'var(--text-primary)';
+        }
+        function handlePrevPage() { if (currentPageNum > 1) renderPage(currentPageNum - 1); }
+        function handleNextPage() { if (currentPageNum < totalNumPages) renderPage(currentPageNum + 1); }
+        function handleGoToPage() { const num = parseInt(DOMElements.pageNumInput.value); if (num >= 1 && num <= totalNumPages) renderPage(num); else { alert(`Invalid page. Must be 1-${totalNumPages}.`); DOMElements.pageNumInput.value = currentPageNum; } }
+        const debouncedRenderPageOnResize = debounce(() => { if (pdfDoc) renderPage(currentPageNum);}, 250);
+
+        // --- Section Management ---
+        function renderSectionAttributeCheckboxes(selectedKeys = []) {
+            DOMElements.sectionAttributeCheckboxes.innerHTML = '';
+            for (const key in ALL_ANNOTATION_ATTRIBUTES_SCHEMA) {
+                const schema = ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key];
+                const div = document.createElement('div');
+                div.className = 'checkbox-item';
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.id = `attr-checkbox-${key}`;
+                input.value = key;
+                input.checked = selectedKeys.includes(key);
+                const label = document.createElement('label');
+                label.htmlFor = `attr-checkbox-${key}`;
+                label.textContent = schema.fieldName;
+                div.appendChild(input);
+                div.appendChild(label);
+                DOMElements.sectionAttributeCheckboxes.appendChild(div);
+            }
+        }
+
+        function getSelectedSectionAttributeKeys() {
+            const selectedKeys = [];
+            DOMElements.sectionAttributeCheckboxes.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
+                selectedKeys.push(checkbox.value);
+            });
+            return selectedKeys;
+        }
+
+        function showSectionForm(mode = 'create', sectionNameToEdit = null) { 
+            DOMElements.sectionFormContainer.style.display = 'block'; 
+            DOMElements.attributesPanelPlaceholder.style.display = 'none'; 
+            DOMElements.annotationAttributesForm.style.display = 'none'; 
+            DOMElements.deleteSectionBtn.style.display = 'none'; 
+
+            if (mode === 'create') { 
+                DOMElements.sectionFormTitle.textContent = "Create New Section"; 
+                DOMElements.newSectionNameInput.value = ""; 
+                DOMElements.newSectionPrefixInput.value = ""; 
+                DOMElements.newSectionColorInput.value = getNextDefaultColor(); 
+                DOMElements.editingSectionOriginalNameInput.value = ""; 
+                DOMElements.saveSectionBtn.textContent = "Create"; 
+                renderSectionAttributeCheckboxes(ATTRIBUTE_TEMPLATES['all-fields']); // Default selection for new
+            } else if (mode === 'edit' && sectionNameToEdit && sections[sectionNameToEdit]) { 
+                const s = sections[sectionNameToEdit]; 
+                DOMElements.sectionFormTitle.textContent = `Edit Section: ${sectionNameToEdit}`; 
+                DOMElements.newSectionNameInput.value = sectionNameToEdit; 
+                DOMElements.newSectionPrefixInput.value = s.prefix; 
+                DOMElements.newSectionColorInput.value = s.color; 
+                DOMElements.editingSectionOriginalNameInput.value = sectionNameToEdit; 
+                DOMElements.saveSectionBtn.textContent = "Save Changes"; 
+                DOMElements.deleteSectionBtn.style.display = 'inline-block'; 
+                renderSectionAttributeCheckboxes(s.activeAttributeKeys); // Load existing selections
+            } 
+            DOMElements.newSectionNameInput.focus(); 
+        }
+
+        function hideSectionForm() { DOMElements.sectionFormContainer.style.display = 'none'; DOMElements.attributesPanelPlaceholder.style.display = 'block'; }
+        DOMElements.newSectionNameInput.addEventListener('input', (e) => { if (!DOMElements.editingSectionOriginalNameInput.value) { DOMElements.newSectionPrefixInput.value = e.target.value.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).map(w => w[0]?w[0].toUpperCase():'').join('').substring(0,4); } });
+        
+        function handleSaveSection() { 
+            const name = DOMElements.newSectionNameInput.value.trim(), prefix = DOMElements.newSectionPrefixInput.value.trim().toUpperCase(); 
+            const color = DOMElements.newSectionColorInput.value, originalName = DOMElements.editingSectionOriginalNameInput.value; 
+            const isEditing = !!originalName; 
+            const selectedAttributeKeys = getSelectedSectionAttributeKeys();
+
+            if (!name || !prefix) { alert("Section Name and ID Prefix are required."); return; } 
+            if (!/^[A-Z0-9_-]+$/i.test(prefix)) { alert("Prefix: alphanumeric, hyphens, underscores."); return; } 
+            if ((!isEditing && sections[name]) || (isEditing && name !== originalName && sections[name])) { alert("A section with this name already exists."); return; } 
+            if (selectedAttributeKeys.length === 0) { alert("Please select at least one data field for this section."); return; }
+            
+            if (isEditing) { 
+                if (name !== originalName) { 
+                    sections[name] = { ...sections[originalName], prefix, color, activeAttributeKeys: selectedAttributeKeys }; 
+                    delete sections[originalName]; 
+                    getAllAnnotations().forEach(ann => { if (ann.section === originalName) ann.section = name; }); 
+                    if (currentSectionName === originalName) currentSectionName = name; 
+                } else { 
+                    sections[name].prefix = prefix; 
+                    sections[name].color = color; 
+                    sections[name].activeAttributeKeys = selectedAttributeKeys; // Update attributes for existing section
+                } 
+                if (sections[name].color !== color || name !== originalName) redrawAnnotationsForPage(currentPageNum); 
+            } else { 
+                sections[name] = { prefix, nextId: 1, color, activeAttributeKeys: selectedAttributeKeys }; 
+                currentSectionName = name; 
+            } 
+            markUnsavedChanges(); updateActiveSectionDropdown(); redrawIdList(); hideSectionForm(); 
+        }
+
+        function handleDeleteSection() { 
+            const sectionNameToDelete = DOMElements.editingSectionOriginalNameInput.value; 
+            if (!sectionNameToDelete || !sections[sectionNameToDelete]) return; 
+            
+            showConfirmationModal(
+                "Delete Section Confirmation",
+                `DELETE Section "${sectionNameToDelete}" and ALL its annotations?\n\nThis cannot be undone.`,
+                (confirmed) => {
+                    if (confirmed) {
+                        const annotationsToDelete = getAllAnnotations().filter(ann => ann.section === sectionNameToDelete).map(ann => ann.id); 
+                        annotationsToDelete.forEach(annId => performDeleteAnnotation(annId, true)); // Pass true to skip inner confirm
+                        delete sections[sectionNameToDelete]; 
+                        const remainingSections = Object.keys(sections); 
+                        if (currentSectionName === sectionNameToDelete) { currentSectionName = remainingSections.length > 0 ? remainingSections[0] : null; } 
+                        markUnsavedChanges(); updateActiveSectionDropdown(); redrawIdList(); hideSectionForm(); 
+                        if (selectedAnnotation && findAnnotationById(selectedAnnotation)?.section === sectionNameToDelete) deselectAnnotation(); 
+                        console.log(`Section "${sectionNameToDelete}" deleted.`); 
+                    }
+                }
+            );
+        }
+
+        function updateActiveSectionDropdown() { DOMElements.activeSectionSelect.innerHTML = ""; let foundCurrent = false; const sortedSectionNames = Object.keys(sections).sort(); sortedSectionNames.forEach(name => { const opt = new Option(name, name); opt.style.borderLeft = `5px solid ${sections[name].color}`; DOMElements.activeSectionSelect.add(opt); if (name === currentSectionName) { opt.selected = true; foundCurrent = true; } }); if (!foundCurrent && sortedSectionNames.length > 0) { currentSectionName = sortedSectionNames[0]; if (DOMElements.activeSectionSelect.options.length > 0) DOMElements.activeSectionSelect.options[0].selected = true; } else if (sortedSectionNames.length === 0) { currentSectionName = null; } DOMElements.activeSectionSelect.style.borderColor = (currentSectionName && sections[currentSectionName]) ? sections[currentSectionName].color : 'var(--border-color)'; DOMElements.activeSectionSelect.disabled = sortedSectionNames.length === 0; DOMElements.newSectionBtn.disabled = false; /* Always allow creating new */ }
+        DOMElements.activeSectionSelect.addEventListener('change', (e) => { currentSectionName = e.target.value; updateActiveSectionDropdown(); });
+
+        // --- Annotation Drawing & Manipulation ---
+        function handleAnnotationLayerMouseDown(e) { if (e.target !== DOMElements.annotationLayer) return; if (!pdfDoc || !currentSectionName || !sections[currentSectionName]) { alert("Load PDF & select active section."); return; } isDrawing = true; const rect = DOMElements.annotationLayer.getBoundingClientRect(); drawingStartCoords.x = e.clientX - rect.left; drawingStartCoords.y = e.clientY - rect.top; tempDrawingBox = document.createElement('div'); tempDrawingBox.className = 'bbox drawing-temp'; Object.assign(tempDrawingBox.style, { left: `${drawingStartCoords.x}px`, top: `${drawingStartCoords.y}px`, width: '0px', height: '0px' }); const activeSecColor = sections[currentSectionName]?.color || 'var(--accent-primary)'; const tempRgb = hexToRgb(activeSecColor); tempDrawingBox.style.borderColor = activeSecColor; if(tempRgb) tempDrawingBox.style.backgroundColor = `rgba(${tempRgb.r}, ${tempRgb.g}, ${tempRgb.b}, 0.2)`; DOMElements.canvasContainer.appendChild(tempDrawingBox); document.addEventListener('mousemove', handleAnnotationLayerMouseMove); document.addEventListener('mouseup', handleAnnotationLayerMouseUp); }
+        function handleAnnotationLayerMouseMove(e) { if (!isDrawing || !tempDrawingBox) return; const rect = DOMElements.annotationLayer.getBoundingClientRect(); const cX = e.clientX - rect.left, cY = e.clientY - rect.top; Object.assign(tempDrawingBox.style, { left: `${Math.min(cX, drawingStartCoords.x)}px`, top: `${Math.min(cY, drawingStartCoords.y)}px`, width: `${Math.abs(cX - drawingStartCoords.x)}px`, height: `${Math.abs(cY - drawingStartCoords.y)}px` }); }
+        function handleAnnotationLayerMouseUp(e) { 
+            if (!isDrawing || !tempDrawingBox) return; isDrawing = false; 
+            document.removeEventListener('mousemove', handleAnnotationLayerMouseMove); 
+            document.removeEventListener('mouseup', handleAnnotationLayerMouseUp); 
+            const finalLeft = parseFloat(tempDrawingBox.style.left), finalTop = parseFloat(tempDrawingBox.style.top); 
+            const width = parseFloat(tempDrawingBox.style.width), height = parseFloat(tempDrawingBox.style.height); 
+            DOMElements.canvasContainer.removeChild(tempDrawingBox); tempDrawingBox = null; 
+            if (width < MIN_BOX_SIZE || height < MIN_BOX_SIZE) return; 
+            let nextIdNum = sections[currentSectionName].nextId; 
+            let potentialId = `${sections[currentSectionName].prefix}-${String(nextIdNum).padStart(3, '0')}`; 
+            while (!isIdUnique(potentialId)) { nextIdNum++; potentialId = `${sections[currentSectionName].prefix}-${String(nextIdNum).padStart(3, '0')}`; } 
+            sections[currentSectionName].nextId = nextIdNum + 1; 
+            const finalId = potentialId; 
+            
+            // Initialize new annotation with default values for all possible attributes
+            const annData = { 
+                id: finalId, 
+                section: currentSectionName, 
+                relX: finalLeft / DOMElements.pdfCanvas.width, 
+                relY: finalTop / DOMElements.pdfCanvas.height, 
+                relW: width / DOMElements.pdfCanvas.width, 
+                relH: height / DOMElements.pdfCanvas.height
+            }; 
+            // Populate all possible attributes with defaults, including 'orderInSection'
+            const currentSectionAnnotations = getAllAnnotations().filter(ann => ann.section === currentSectionName);
+            annData.orderInSection = currentSectionAnnotations.length + 1; // Pre-fill with order of creation within the section
+
+            for (const key in ALL_ANNOTATION_ATTRIBUTES_SCHEMA) {
+                // Ensure orderInSection is not overwritten if already set above
+                if (key === 'orderInSection' && annData.orderInSection !== undefined) continue;
+
+                const schema = ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key];
+                if (schema.inputType === 'checkbox') {
+                    annData[key] = schema.defaultValue !== undefined ? schema.defaultValue : false;
+                } else {
+                    annData[key] = schema.defaultValue !== undefined ? schema.defaultValue : '';
+                }
+            }
+
+            if (!annotations[String(currentPageNum)]) annotations[String(currentPageNum)] = []; 
+            annotations[String(currentPageNum)].push(annData); 
+            createAnnotationBoxElement(annData); 
+            selectAnnotation(annData.id); 
+            markUnsavedChanges(); 
+            redrawIdList(); 
+            updateExportAndActionButtonsState(); 
+        }
+        function createAnnotationBoxElement(annData) { const box = document.createElement('div'); box.className = 'bbox'; box.id = `bbox-${annData.id}`; box.dataset.id = annData.id; const cW = DOMElements.pdfCanvas.width, cH = DOMElements.pdfCanvas.height; Object.assign(box.style, { left: `${annData.relX*cW}px`, top: `${annData.relY*cH}px`, width: `${annData.relW*cW}px`, height: `${annData.relH*cH}px` }); const secColor = sections[annData.section]?.color || 'var(--accent-danger)'; const rgbVal = hexToRgb(secColor); box.style.borderColor = secColor; if (rgbVal) box.style.backgroundColor = `rgba(${rgbVal.r},${rgbVal.g},${rgbVal.b},0.25)`; ['nw','n','ne','w','e','sw','s','se'].forEach(t => { const h = document.createElement('div'); h.className = `resize-handle handle-${t}`; h.dataset.type = t; box.appendChild(h);}); DOMElements.canvasContainer.appendChild(box); box.addEventListener('mousedown', (e) => handleBoxMouseDown(e, annData.id)); return box; }
+        function selectAnnotation(annId) { 
+            if (selectedAnnotation === annId) return; 
+            deselectAnnotation(); 
+            selectedAnnotation = annId; 
+            const boxEl = document.getElementById(`bbox-${annId}`), annData = findAnnotationById(annId); 
+            if (boxEl) { boxEl.classList.add('selected'); boxEl.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});} 
+            else { 
+                const tP = findPageForAnnotation(annId); 
+                if (tP && tP !== currentPageNum) { 
+                    renderPage(tP).then(() => { 
+                        const nBE = document.getElementById(`bbox-${annId}`); 
+                        if(nBE){nBE.classList.add('selected'); nBE.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});}
+                    });
+                }
+            } 
+            const li = document.getElementById(`list-item-${annId}`); 
+            if (li) {li.classList.add('list-item-highlighted'); li.scrollIntoView({behavior:'smooth',block:'nearest'});} 
+            if (annData) { 
+                populateAttributeForm(annData); 
+                // Focus the first available input field
+                const firstInput = DOMElements.dynamicAttributesContainer.querySelector('input, textarea, select');
+                if (firstInput) firstInput.focus();
+            } 
+        }
+        function deselectAnnotation() { if (!selectedAnnotation) return; const bE = document.getElementById(`bbox-${selectedAnnotation}`); if (bE) bE.classList.remove('selected'); const lI = document.getElementById(`list-item-${selectedAnnotation}`); if (lI) lI.classList.remove('list-item-highlighted'); selectedAnnotation = null; hideAnnotationAttributeForm(); DOMElements.attributesStatus.textContent = ""; }
+        function handleBoxMouseDown(e, annId) { e.stopPropagation(); const annData = findAnnotationById(annId); if (!annData) return; selectAnnotation(annId); const boxEl = document.getElementById(`bbox-${annId}`), rect = boxEl.getBoundingClientRect(); if (e.target.classList.contains('resize-handle')) { isResizing = true; resizeHandleType = e.target.dataset.type; originalBoxRect = {x:parseFloat(boxEl.style.left),y:parseFloat(boxEl.style.top),width:parseFloat(boxEl.style.width),height:parseFloat(boxEl.style.height)}; document.body.style.cursor = e.target.style.cursor; } else { isDragging = true; boxEl.classList.add('dragging'); dragOffset.x = e.clientX - rect.left; dragOffset.y = e.clientY - rect.top; document.body.style.cursor = 'grabbing'; } document.addEventListener('mousemove', handleDocumentMouseMove); document.addEventListener('mouseup', handleDocumentMouseUp); }
+        function handleDocumentMouseMove(e) { if (!isDragging && !isResizing) return; e.preventDefault(); const boxEl = document.getElementById(`bbox-${selectedAnnotation}`); if (!boxEl) return; const canvRect = DOMElements.annotationLayer.getBoundingClientRect(); const mX = e.clientX - canvRect.left, mY = e.clientY - canvRect.top; if (isDragging) { let nX = mX - dragOffset.x, nY = mY - dragOffset.y; nX = Math.max(0, Math.min(nX, DOMElements.pdfCanvas.width - parseFloat(boxEl.style.width))); nY = Math.max(0, Math.min(nY, DOMElements.pdfCanvas.height - parseFloat(boxEl.style.height))); boxEl.style.left = `${nX}px`; boxEl.style.top = `${nY}px`; } else if (isResizing) { let {x,y,width,height} = originalBoxRect; if(resizeHandleType.includes('w')){const nX=Math.min(mX,x+width-MIN_BOX_SIZE);width=x+width-nX;x=nX;} if(resizeHandleType.includes('n')){const nY=Math.min(mY,y+height-MIN_BOX_SIZE);height=y+height-nY;y=nY;} if(resizeHandleType.includes('e')){width=Math.max(MIN_BOX_SIZE,mX-x);} if(resizeHandleType.includes('s')){height=Math.max(MIN_BOX_SIZE,mY-y);} width=Math.max(MIN_BOX_SIZE,width); height=Math.max(MIN_BOX_SIZE,height); x=Math.max(0,Math.min(x,DOMElements.pdfCanvas.width-width)); y=Math.max(0,Math.min(y,DOMElements.pdfCanvas.height-height)); width=Math.min(width,DOMElements.pdfCanvas.width-x); height=Math.min(height,DOMElements.pdfCanvas.height-y); Object.assign(boxEl.style, {left:`${x}px`,top:`${y}px`,width:`${width}px`,height:`${height}px`}); } }
+        function handleDocumentMouseUp(e) { const boxEl = document.getElementById(`bbox-${selectedAnnotation}`); if(boxEl)boxEl.classList.remove('dragging'); document.removeEventListener('mousemove',handleDocumentMouseMove); document.removeEventListener('mouseup',handleDocumentMouseUp); document.body.style.cursor='default'; if(isDragging||isResizing){ const annD=findAnnotationById(selectedAnnotation); if(annD && boxEl){const cW=DOMElements.pdfCanvas.width,cH=DOMElements.pdfCanvas.height;Object.assign(annD,{relX:parseFloat(boxEl.style.left)/cW,relY:parseFloat(boxEl.style.top)/cH,relW:parseFloat(boxEl.style.width)/cW,relH:parseFloat(boxEl.style.height)/cH});markUnsavedChanges();}} isDragging=false;isResizing=false;resizeHandleType=null;originalBoxRect=null; }
+        DOMElements.pdfViewerContentArea.addEventListener('click', (e) => { if (e.target === DOMElements.pdfViewerContentArea || e.target === DOMElements.canvasContainer) deselectAnnotation();});
+        function deleteAnnotation(annId, skipConfirm = false) { 
+            if (!skipConfirm) { // Only show confirm if not skipped
+                showConfirmationModal(
+                    "Delete Annotation Confirmation",
+                    `Delete annotation ${annId}?`,
+                    (confirmed) => {
+                        if (confirmed) {
+                            performDeleteAnnotation(annId);
+                        }
+                    }
+                );
+            } else {
+                performDeleteAnnotation(annId);
+            }
+        }
+
+        function performDeleteAnnotation(annId) { // New helper function
+            let found = false; 
+            for(const pNS in annotations){ 
+                const pA=annotations[pNS]; 
+                const i=pA.findIndex(a=>a.id===annId); 
+                if(i>-1){pA.splice(i,1);if(pA.length===0)delete annotations[pNS];found=true;break;}
+            } 
+            if(found){
+                const bE=document.getElementById(`bbox-${annId}`);if(bE)bE.remove();
+                if(selectedAnnotation===annId)deselectAnnotation();
+                markUnsavedChanges();
+                // Re-order the remaining annotations in the section
+                const pageAnns = getPageAnnotations(findPageForAnnotation(annId));
+                const sectionAnns = pageAnns.filter(ann => ann.section === findAnnotationById(annId)?.section).sort((a, b) => a.orderInSection - b.orderInSection);
+                sectionAnns.forEach((ann, index) => ann.orderInSection = index + 1);
+                redrawIdList();
+                updateExportAndActionButtonsState();
+            } 
+        }
+
+        function handleClearAllAnnotations() { 
+            if(getAllAnnotations().length===0){alert("No annotations to clear.");return;} 
+            showConfirmationModal(
+                "Clear All Annotations Confirmation",
+                "Clear ALL annotations on ALL pages? Cannot be undone.",
+                (confirmed) => {
+                    if (confirmed) {
+                        annotations={}; 
+                        Object.values(sections).forEach(s=>s.nextId=1); 
+                        clearAnnotationDisplay(); 
+                        if(selectedAnnotation)deselectAnnotation(); 
+                        markUnsavedChanges();redrawIdList();updateExportAndActionButtonsState(); 
+                    }
+                }
+            );
+        }
+
+        // --- Annotation Attribute Form (Dynamic) ---
+        function populateAttributeForm(annData) {
+            DOMElements.annotationAttributesForm.style.display = 'block';
+            DOMElements.sectionFormContainer.style.display = 'none';
+            DOMElements.attributesPanelPlaceholder.style.display = 'none';
+            DOMElements.annotationFormTitle.textContent = `Attributes for ${annData.id}`;
+            DOMElements.editingAnnotationIdInput.value = annData.id;
+            DOMElements.dynamicAttributesContainer.innerHTML = ''; // Clear previous fields
+
+            const section = sections[annData.section];
+            if (!section || !section.activeAttributeKeys || section.activeAttributeKeys.length === 0) {
+                DOMElements.dynamicAttributesContainer.innerHTML = '<p style="color: var(--text-secondary);">No data fields configured for this section. Edit the section to add fields.</p>';
+                DOMElements.attributesStatus.textContent = "";
+                return;
+            }
+
+            section.activeAttributeKeys.forEach(key => {
+                const schema = ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key];
+                if (!schema) {
+                    console.warn(`Schema for attribute key "${key}" not found.`);
+                    return;
+                }
+
+                const formGroup = document.createElement('div');
+                formGroup.className = 'form-group';
+                
+                // Conditional visibility for calculated fields group
+                let isConditional = false;
+                if (schema.conditionalOn) {
+                    for (const conditionKey in schema.conditionalOn) {
+                        if (schema.conditionalOn.hasOwnProperty(conditionKey)) {
+                            const conditionValue = schema.conditionalOn[conditionKey];
+                            if (Array.isArray(conditionValue)) {
+                                if (!conditionValue.includes(annData[conditionKey])) {
+                                    formGroup.style.display = 'none';
+                                    isConditional = true;
+                                    break;
+                                }
+                            } else {
+                                if (annData[conditionKey] !== conditionValue) {
+                                    formGroup.style.display = 'none';
+                                    isConditional = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                const label = document.createElement('label');
+                label.htmlFor = `attr-dynamic-${key}`;
+                label.textContent = schema.fieldName + ':';
+                formGroup.appendChild(label);
+
+                let inputElement;
+                switch (schema.inputType) {
+                    case 'text':
+                    case 'number':
+                    case 'date':
+                    case 'time':
+                        inputElement = document.createElement('input');
+                        inputElement.type = schema.inputType;
+                        break;
+                    case 'textarea':
+                        inputElement = document.createElement('textarea');
+                        inputElement.rows = 2;
+                        break;
+                    case 'checkbox':
+                        inputElement = document.createElement('input');
+                        inputElement.type = 'checkbox';
+                        // Specific styles for dynamic form checkboxes
+                        inputElement.style.width = '20px'; 
+                        inputElement.style.height = '20px';
+                        inputElement.style.minWidth = '20px';
+                        inputElement.style.minHeight = '20px';
+                        inputElement.style.marginLeft = '0';
+                        inputElement.style.marginRight = '10px';
+                        label.style.display = 'inline-block'; // Adjust label for checkbox
+                        label.style.lineHeight = '20px'; // Align text with checkbox
+                        break;
+                    case 'select':
+                        inputElement = document.createElement('select');
+                        schema.options.forEach(optionText => {
+                            const option = document.createElement('option');
+                            option.value = optionText;
+                            option.textContent = optionText;
+                            inputElement.appendChild(option);
+                        });
+                        break;
+                    default:
+                        inputElement = document.createElement('input');
+                        inputElement.type = 'text';
+                        console.warn(`Unknown input type: ${schema.inputType} for key: ${key}`);
+                }
+
+                inputElement.id = `attr-dynamic-${key}`;
+                inputElement.dataset.attributeKey = key; // Store key for easy access in change handler
+
+                // Set value
+                if (schema.inputType === 'checkbox') {
+                    inputElement.checked = !!annData[key]; // Convert to boolean
+                } else {
+                    inputElement.value = annData[key] !== undefined ? annData[key] : (schema.defaultValue !== undefined ? schema.defaultValue : '');
+                }
+
+                formGroup.appendChild(inputElement);
+                DOMElements.dynamicAttributesContainer.appendChild(formGroup);
+
+                // Add event listener for dynamic fields
+                inputElement.addEventListener(schema.inputType === 'checkbox' ? 'change' : 'input', handleDynamicAttributeInputChange);
+            });
+
+            DOMElements.attributesStatus.textContent = "All changes saved.";
+            DOMElements.attributesStatus.style.color = 'var(--accent-success)';
+        }
+
+        function hideAnnotationAttributeForm() {
+            DOMElements.annotationAttributesForm.style.display = 'none';
+            DOMElements.attributesPanelPlaceholder.style.display = 'block';
+            DOMElements.editingAnnotationIdInput.value = "";
+            DOMElements.dynamicAttributesContainer.innerHTML = ''; // Clear dynamic fields
+        }
+
+        // Generic handler for dynamic attribute input changes
+        function handleDynamicAttributeInputChange(event) {
+            const currentAnn = findAnnotationById(selectedAnnotation);
+            if (!currentAnn) return;
+
+            const inputElement = event.target;
+            const key = inputElement.dataset.attributeKey;
+            const schema = ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key];
+
+            let value;
+            if (schema.inputType === 'checkbox') {
+                value = inputElement.checked;
+            } else {
+                value = inputElement.value;
+            }
+            currentAnn[key] = value;
+            
+            // Re-render the form to apply conditional visibility if a relevant field changed
+            if (schema.conditionalOn || Object.values(ALL_ANNOTATION_ATTRIBUTES_SCHEMA).some(s => s.conditionalOn && s.conditionalOn[key])) {
+                populateAttributeForm(currentAnn); // Re-populate to update conditional visibility
+            }
+
+            DOMElements.attributesStatus.textContent = "Unsaved changes...";
+            DOMElements.attributesStatus.style.color = 'var(--accent-warning)';
+            debouncedAutoSaveAttributes(); // Debounce the actual save operation
+        }
+
+        // Simplified Auto-Save: Now saves the entire annotation object
+        function performAutoSaveAttributes() {
+            const id = DOMElements.editingAnnotationIdInput.value;
+            if (!id) return;
+            const annData = findAnnotationById(id);
+            if (!annData) {
+                DOMElements.attributesStatus.textContent = "Save error! Annotation not found.";
+                DOMElements.attributesStatus.style.color = 'var(--accent-danger)';
+                return;
+            }
+            DOMElements.attributesStatus.textContent = "Saving...";
+            DOMElements.attributesStatus.style.color = 'var(--text-secondary)';
+            
+            // The annotation object 'annData' is directly modified by handleDynamicAttributeInputChange,
+            // so we just need to mark changes and update UI.
+            markUnsavedChanges();
+            redrawIdList(); // Update list item if labelText or orderInSection changed
+            DOMElements.attributesStatus.textContent = "All changes saved.";
+            DOMElements.attributesStatus.style.color = 'var(--accent-success)';
+        }
+
+        // --- ID List (with Drag and Drop) ---
+        function redrawIdList() { 
+            DOMElements.idListContainer.innerHTML=""; 
+            const expSec=new Set(); 
+            DOMElements.idListContainer.querySelectorAll('details[open]').forEach(d=>expSec.add(d.querySelector('summary').dataset.sectionName)); 
+            
+            Object.keys(sections).sort().forEach(secName=>{ 
+                const sec=sections[secName]; 
+                // Sort annotations primarily by orderInSection, then by ID
+                const secAnns=getAllAnnotations().filter(a=>a.section === secName).sort((a,b)=>{
+                    const oA=a.orderInSection===undefined?Infinity:a.orderInSection;
+                    const oB=b.orderInSection===undefined?Infinity:b.orderInSection;
+                    if(oA!==oB)return oA-oB;
+                    return a.id.localeCompare(b.id,{numeric:true});
+                }); 
+                
+                const det=document.createElement('details'); 
+                if(expSec.has(secName)||secAnns.some(a=>a.id===selectedAnnotation))det.open=true; 
+                
+                const sum=document.createElement('summary'); 
+                sum.dataset.sectionName=secName; 
+                const cC=document.createElement('span');cC.className='section-color-chip';cC.style.backgroundColor=sec.color;sum.appendChild(cC); 
+                const nPS=document.createElement('span');nPS.textContent=`${secName} (${sec.prefix})`;sum.appendChild(nPS); 
+                const eSB=document.createElement('button');eSB.className='edit-section-btn icon-button';eSB.title='Edit Section';eSB.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';eSB.onclick=e=>{e.preventDefault();e.stopPropagation();showSectionForm('edit',secName);};sum.appendChild(eSB); 
+                const cSB=document.createElement('button');cSB.className='copy-section-btn icon-button';cSB.title='Copy Section Table';cSB.disabled=secAnns.length===0;cSB.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';cSB.onclick=e=>{e.preventDefault();e.stopPropagation();handleCopySectionTable(secName,cSB);};sum.appendChild(cSB); 
+                det.appendChild(sum); 
+
+                if(secAnns.length>0){
+                    const ul=document.createElement('ul');
+                    ul.dataset.sectionName = secName; // Add section name to ul for drag/drop
+                    ul.addEventListener('dragover', handleDragOver);
+                    ul.addEventListener('drop', handleDrop);
+                    ul.addEventListener('dragleave', handleDragLeave); // To remove drag-over class
+
+                    secAnns.forEach(ann=>{
+                        const li=document.createElement('li');
+                        li.className='id-list-item';
+                        li.id=`list-item-${ann.id}`;
+                        li.dataset.id = ann.id; // Store annotation ID
+                        li.draggable = true; // Make draggable
+                        li.addEventListener('dragstart', handleDragStart);
+                        li.addEventListener('dragover', handleDragOver); // For reordering within the list
+                        li.addEventListener('dragleave', handleDragLeave);
+                        li.addEventListener('drop', handleDrop);
+                        li.addEventListener('dragend', handleDragEnd); // Clean up after drag
+
+                        if(ann.id===selectedAnnotation)li.classList.add('list-item-highlighted'); 
+                        
+                        const clA=document.createElement('div');
+                        clA.className='list-item-clickable-area';
+                        clA.onclick=()=>handleIdListItemClick(ann.id);
+                        
+                        const orderS=document.createElement('span'); // Display orderInSection
+                        orderS.className='list-item-order';
+                        orderS.textContent=`${ann.orderInSection}.`; // Show step number
+                        clA.appendChild(orderS);
+
+                        const idS=document.createElement('span'); // Keep full ID hidden but accessible
+                        idS.className='list-item-id-hidden';
+                        idS.textContent=ann.id;
+                        clA.appendChild(idS);
+                        
+                        const lbS=document.createElement('span');
+                        lbS.className='list-item-label';
+                        lbS.textContent=ann.labelText || '(No Field Name)'; // Use labelText for display
+                        lbS.title=ann.labelText || '(No Field Name)';
+                        clA.appendChild(lbS);
+                        
+                        const tyS=document.createElement('span');
+                        tyS.className='list-item-type';
+                        tyS.textContent=ann.componentType || '(No Type)'; // Use componentType for display
+                        clA.appendChild(tyS);
+                        
+                        li.appendChild(clA); 
+                        const delB=document.createElement('button');
+                        delB.className='delete-btn icon-button'; // Add icon-button class
+                        delB.title='Delete Annotation';
+                        delB.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'; // Trash can icon
+                        delB.onclick=(e)=>{e.stopPropagation();deleteAnnotation(ann.id);}; // Stop propagation to prevent selecting annotation on delete click
+                        li.appendChild(delB);
+                        ul.appendChild(li);
+                    });
+                    det.appendChild(ul);
+                } else{
+                    const p=document.createElement('p');
+                    p.textContent="No annotations.";
+                    Object.assign(p.style,{padding:"8px",fontSize:"0.9em",color:"var(--text-secondary)"});
+                    det.appendChild(p);
+                } 
+                DOMElements.idListContainer.appendChild(det);
+            }); 
+            updateExportAndActionButtonsState(); 
+        }
+
+        // --- Drag and Drop Handlers ---
+        function handleDragStart(e) {
+            draggedItem = e.target;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', draggedItem.dataset.id); // Pass the annotation ID
+            setTimeout(() => {
+                draggedItem.classList.add('dragging');
+            }, 0); // Add class after drag event is fully initiated
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault(); // Necessary to allow drop
+            e.dataTransfer.dropEffect = 'move';
+            const target = e.target.closest('.id-list-item');
+            if (target && target !== draggedItem) {
+                // Remove drag-over from previous target
+                const currentDragOver = document.querySelector('.drag-over');
+                if (currentDragOver) {
+                    currentDragOver.classList.remove('drag-over');
+                }
+                target.classList.add('drag-over');
+            }
+        }
+
+        function handleDragLeave(e) {
+            e.target.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const target = e.target.closest('.id-list-item');
+            const parentUl = e.target.closest('ul');
+
+            if (!draggedItem || !parentUl || draggedItem.parentNode !== parentUl) {
+                // Not a valid drop within the same section or dragged item is null
+                if (target) target.classList.remove('drag-over');
+                return;
+            }
+
+            // Remove drag-over class from any element
+            const currentDragOver = document.querySelector('.drag-over');
+            if (currentDragOver) {
+                currentDragOver.classList.remove('drag-over');
+            }
+
+            if (target && target !== draggedItem) {
+                const targetRect = target.getBoundingClientRect();
+                const draggedRect = draggedItem.getBoundingClientRect();
+                const offset = e.clientY - targetRect.top;
+
+                if (offset > targetRect.height / 2) {
+                    // Drop below the target
+                    parentUl.insertBefore(draggedItem, target.nextSibling);
+                } else {
+                    // Drop above the target
+                    parentUl.insertBefore(draggedItem, target);
+                }
+                updateAnnotationOrder(parentUl.dataset.sectionName);
+            }
+        }
+
+        function handleDragEnd(e) {
+            if (draggedItem) {
+                draggedItem.classList.remove('dragging');
+                draggedItem = null;
+            }
+            const currentDragOver = document.querySelector('.drag-over');
+            if (currentDragOver) {
+                currentDragOver.classList.remove('drag-over');
+            }
+        }
+
+        function updateAnnotationOrder(sectionName) {
+            const ulElement = DOMElements.idListContainer.querySelector(`ul[data-section-name="${sectionName}"]`);
+            if (!ulElement) return;
+
+            const orderedIds = Array.from(ulElement.children).map(li => li.dataset.id);
+            const pageAnns = getPageAnnotations(currentPageNum); // Get annotations for current page
+            const sectionAnns = pageAnns.filter(ann => ann.section === sectionName);
+
+            // Create a map for quick lookup
+            const annMap = new Map(sectionAnns.map(ann => [ann.id, ann]));
+
+            orderedIds.forEach((id, index) => {
+                const ann = annMap.get(id);
+                if (ann) {
+                    ann.orderInSection = index + 1; // Update orderInSection based on new visual order
+                }
+            });
+
+            markUnsavedChanges(); // Mark changes for saving
+            redrawIdList(); // Re-render the list to show updated numbers and ensure consistency
+        }
+
+
+        async function handleIdListItemClick(id){const tP=findPageForAnnotation(id);if(tP&&tP!==currentPageNum)await renderPage(tP);selectAnnotation(id);}
+        
+        // --- Export Functions ---
+        function toggleExportDropdown(){const m=DOMElements.exportOptionsMenu;m.style.display=m.style.display==='block'?'none':'block';} 
+        DOMElements.exportDropdownToggleBtn.addEventListener('click',toggleExportDropdown); 
+        document.addEventListener('click',e=>{if(!DOMElements.exportDropdownToggleBtn.contains(e.target)&&!DOMElements.exportOptionsMenu.contains(e.target))DOMElements.exportOptionsMenu.style.display='none';});
+        
+        function handleExportCsv(){
+            toggleExportDropdown(); 
+            const allAnns = getAllAnnotations(); 
+            if(allAnns.length===0){alert("No annotations to export.");return;} 
+
+            // Dynamically collect all possible attribute keys that exist on any annotation
+            const allAttributeKeysSet = new Set();
+            allAttributeKeysSet.add("Section"); // Always include these standard fields
+            allAttributeKeysSet.add("ID");
+            allAttributeKeysSet.add("Page");
+            
+            for (const key in ALL_ANNOTATION_ATTRIBUTES_SCHEMA) {
+                allAttributeKeysSet.add(key);
+            }
+            const allSortedAttributeKeys = Array.from(allAttributeKeysSet); // Convert Set to Array
+
+            // Generate header row based on fieldName from schema or the key itself
+            const header = allSortedAttributeKeys.map(key => {
+                if (key === "Section" || key === "ID" || key === "Page") {
+                    return key; // For standard fields
+                }
+                return ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key]?.fieldName || key; // Use fieldName if available, else key
+            });
+
+            const csvRows = [header.join(",")]; // First row is header
+
+            // Sort annotations for consistent export order
+            allAnns.sort((a,b)=>{
+                if(a.section!==b.section)return a.section.localeCompare(b.section);
+                const oA=a.orderInSection===undefined?Infinity:a.orderInSection;
+                const oB=b.orderInSection===undefined?Infinity:b.orderInSection;
+                if(oA!==oB)return oA-oB;
+                return a.id.localeCompare(b.id,{numeric:true});
+            }); 
+
+            allAnns.forEach(ann => {
+                const pageNum = findPageForAnnotation(ann.id);
+                const rowData = allSortedAttributeKeys.map(key => {
+                    let value;
+                    if (key === "Section") value = ann.section;
+                    else if (key === "ID") value = ann.id;
+                    else if (key === "Page") value = pageNum;
+                    else if (ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key]) { // It's one of our defined attributes
+                        value = ann[key];
+                    } else {
+                        value = undefined; // Should not happen if all keys are from schema, but safety
+                    }
+
+                    // Format values for CSV (handle undefined/null, boolean, and escape quotes)
+                    let s = (value === undefined || value === null) ? "" : String(value);
+                    if (typeof value === 'boolean') s = value ? "Yes" : "No"; // Convert boolean to Yes/No for readability
+                    return `"${s.replace(/"/g,'""')}"`; // Escape double quotes and wrap in quotes
+                });
+                csvRows.push(rowData.join(","));
+            }); 
+            triggerDownload(new Blob([csvRows.join("\n")],{type:'text/csv;charset=utf-8;'}),`annotations_ebr_mapping_${formatDateForFilename()}.csv`);
+        }
+
+        // TSV Copy for clipboard (similar logic to CSV but tab-separated)
+        function copyAnnotationsToClipboardTSV(anns,btn){
+            if(anns.length===0){alert("No annotations to copy.");return;} 
+            
+            const allAttributeKeysSet = new Set();
+            allAttributeKeysSet.add("Section"); 
+            allAttributeKeysSet.add("ID");
+            allAttributeKeysSet.add("Page");
+            for (const key in ALL_ANNOTATION_ATTRIBUTES_SCHEMA) {
+                allAttributeKeysSet.add(key);
+            }
+            const allSortedAttributeKeys = Array.from(allAttributeKeysSet); 
+
+            const header = allSortedAttributeKeys.map(key => {
+                if (key === "Section" || key === "ID" || key === "Page") {
+                    return key; 
+                }
+                return ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key]?.fieldName || key; 
+            });
+
+            const tsvRows = [header.join("\t")]; 
+
+            anns.forEach(a=>{
+                const pN=findPageForAnnotation(a.id);
+                const rowData = allSortedAttributeKeys.map(key => {
+                    let value;
+                    if (key === "Section") value = a.section;
+                    else if (key === "ID") value = a.id;
+                    else if (key === "Page") value = pN;
+                    else if (ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key]) { 
+                        value = a[key];
+                    } else {
+                        value = undefined;
+                    }
+                    let s = (value === undefined || value === null) ? "" : String(value);
+                    if (typeof value === 'boolean') s = value ? "Yes" : "No";
+                    return s.replace(/\t|\n|\r/g," "); // Remove tabs/newlines for TSV
+                });
+                tsvRows.push(rowData.join("\t"));
+            }); 
+            navigator.clipboard.writeText(tsvRows.join("\n")).then(()=>{if(btn){const oT=btn.textContent;btn.textContent="Copied!";setTimeout(()=>btn.textContent=oT,2000);}else alert("Copied!");}).catch(e=>{console.error("Copy failed:",e);alert("Copy failed.");});
+        }
+
+        function handleCopySectionTable(sN,btn){
+            const sA=getAllAnnotations().filter(a=>a.section===sN).sort((a,b)=>{
+                const oA=a.orderInSection===undefined?Infinity:a.orderInSection;
+                const oB=b.orderInSection===undefined?Infinity:b.orderInSection;
+                if(oA!==oB)return oA-oB;
+                return a.id.localeCompare(b.id,{numeric:true});
+            });
+            copyAnnotationsToClipboardTSV(sA,btn);
+        }
+        function handleCopyAllSectionsTable(){
+            const all=getAllAnnotations().sort((a,b)=>{
+                if(a.section!==b.section)return a.section.localeCompare(b.section);
+                const oA=a.orderInSection===undefined?Infinity:a.orderInSection;
+                const oB=b.orderInSection===undefined?Infinity:b.orderInSection;
+                if(oA!==oB)return oA-oB;
+                return a.id.localeCompare(b.id,{numeric:true});
+            });
+            copyAnnotationsToClipboardTSV(all,DOMElements.copyAllSectionsBtn);
+        }
+
+        async function createBaseExportPdfWithState() { 
+            if (!originalPdfRawBytes) { alert("No PDF loaded."); return null; } 
+            try { 
+                const pdfLibDoc = await PDFDocument.load(originalPdfRawBytes.slice(0)); 
+                const helveticaFont = await pdfLibDoc.embedFont(StandardFonts.Helvetica); 
+                pdfLibDoc.getPages().forEach(p=>{const{width,height}=p.getSize();p.drawText(WATERMARK_TEXT,{x:width/2-(helveticaFont.widthOfTextAtSize(WATERMARK_TEXT,10)/2),y:20,size:10,font:helveticaFont,color:rgb(0.5,0.5,0.5),opacity:0.5,});}); 
+                
+                // Embed sections and annotations (which now contain the new attributes)
+                pdfLibDoc.catalog.set(PDFName.of(EMBEDDED_STATE_KEY),PDFString.of(JSON.stringify({sections,annotations}))); 
+                return pdfLibDoc; 
+            } catch (e) { 
+                console.error("Error preparing base PDF:", e); 
+                alert(`Error PDF prep: ${e.message}`); 
+                return null; 
+            } 
+        }
+        async function handleExportPdfSaveResume(){toggleExportDropdown(); const pdfDoc=await createBaseExportPdfWithState(); if(!pdfDoc)return; try{const b=await pdfDoc.save();triggerDownload(new Blob([b],{type:'application/pdf'}),`annotated_savenresume_${formatDateForFilename()}.pdf`);markUnsavedChanges(false);}catch(e){console.error("Error saving PDF (SR):",e);alert(`Error saving PDF: ${e.message}`);}}
+        async function handleExportPdfWithTables(){ toggleExportDropdown(); const pdfDoc=await createBaseExportPdfWithState(); if(!pdfDoc)return; 
+            try{
+                const helvetica=await pdfDoc.embedFont(StandardFonts.Helvetica);const helveticaB=await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+                const A4W=595.28, A4H=841.89, M=40 /* Reduced margin slightly */, FS=9, HFS=10, TFS=14, ROW_PADDING=3;
+                const dW=A4W-2*M; 
+                // Updated fixed columns for PDF table, prioritizing SME-friendly names
+                const tabH=["ID","Page","Order","Field Name / Question","Component Type","Data Type","Original Data Location (Paper)","Destination Data Location (EBR)","Is Calculated?","ERP Field (Dev)"];
+                // Adjust column widths to fit new headers
+                const cWR=[0.09, 0.04, 0.06, 0.20, 0.11, 0.08, 0.12, 0.12, 0.08, 0.10]; 
+                const cW=cWR.map(w=>w*dW); 
+                const HEADER_BG_COLOR = rgb(0.9, 0.9, 0.9);
+                const ALT_ROW_BG_COLOR = rgb(0.95, 0.95, 0.95);
+
+                function drawWrap(txt,x,y,maxW,pg,fnt,sz){const wrds=String(txt).split(' ');let ln='',lD=0;for(let n=0;n<wrds.length;n++){const tL=ln+wrds[n]+' ';const tW=fnt.widthOfTextAtSize(tL,sz);if(tW>maxW&&n>0){pg.drawText(ln,{x,y:y-(lD*(sz*1.2)),font:fnt,size:sz,color:rgb(0,0,0)});ln=wrds[n]+' ';lD++;}else{ln=tL;}}pg.drawText(ln,{x,y:y-(lD*(sz*1.2)),font:fnt,size:sz,color:rgb(0,0,0)});return lD+1;} 
+                
+                Object.keys(sections).sort().forEach(secName=>{
+                    const secAnns=getAllAnnotations().filter(a=>a.section===secName).sort((a,b)=>{const oA=a.orderInSection===undefined?Infinity:a.orderInSection;const oB=b.orderInSection===undefined?Infinity:b.orderInSection;if(oA!==oB)return oA-oB;return a.id.localeCompare(b.id,{numeric:true});});
+                    if(secAnns.length===0)return; 
+                    let curP=pdfDoc.addPage([A4W,A4H]);let cY=A4H-M; let rowNum = 0;
+
+                    function drawSecH(pg,yP,ttl){pg.drawText(ttl,{x:M,y:yP,font:helveticaB,size:TFS,color:rgb(0,0,0)});return yP-(TFS*1.5);} 
+                    function drawTabH(pg,yP){let cX=M;const headerHeight = HFS * 1.2 + 2 * ROW_PADDING;
+                        pg.drawRectangle({ x: M, y: yP - headerHeight, width: dW, height: headerHeight, color: HEADER_BG_COLOR}); // Header background
+                        pg.drawLine({start:{x:M,y:yP},end:{x:A4W-M,y:yP},thickness:1,color:rgb(0.4,0.4,0.4)}); // Top line
+                        tabH.forEach((h,i)=>{pg.drawText(h,{x:cX+ROW_PADDING,y:yP-HFS-ROW_PADDING,font:helveticaB,size:HFS,color:rgb(0,0,0)});cX+=cW[i];});
+                        pg.drawLine({start:{x:M,y:yP-headerHeight},end:{x:A4W-M,y:yP-headerHeight},thickness:1,color:rgb(0.4,0.4,0.4)}); // Bottom line
+                        return yP-headerHeight;
+                    } 
+                    cY=drawSecH(curP,cY,`Section: ${secName}`);cY=drawTabH(curP,cY);
+                    
+                    secAnns.forEach(ann=>{
+                        const pNFA=findPageForAnnotation(ann.id);
+                        // Data for each column in the PDF table
+                        const rD=[
+                            ann.id,
+                            pNFA,
+                            ann.orderInSection===undefined?'':ann.orderInSection,
+                            ann.labelText||"",
+                            ann.componentType||"",
+                            ann.dataType||"",
+                            ann.originalDataLocation||"",
+                            ann.destinationDataLocation||"",
+                            ann.isCalculatedValue ? "Yes" : "No", // Convert boolean to Yes/No
+                            ann.erpFieldNamePath||""
+                        ];
+                        let maxL=1; 
+                        rD.forEach((txt,i)=>{const lines = drawWrap(String(txt),0,0,cW[i]-(2*ROW_PADDING),{drawText:()=>{}},helvetica,FS); maxL=Math.max(maxL,lines);}); // Pre-calculate max lines needed
+                        const rH=maxL*(FS*1.2) + (2*ROW_PADDING); // Add padding top/bottom
+                        
+                        if(cY-rH<M){curP=pdfDoc.addPage([A4W,A4H]);cY=A4H-M;cY=drawSecH(curP,cY,`Section: ${secName} (Continued)`);cY=drawTabH(curP,cY); rowNum = 0;}
+                        
+                        // Alternate row background
+                        if (rowNum % 2 !== 0) {
+                             curP.drawRectangle({ x: M, y: cY - rH, width: dW, height: rH, color: ALT_ROW_BG_COLOR, opacity: 0.5 });
+                        }
+
+                        curP.drawLine({start:{x:M,y:cY-rH},end:{x:A4W-M,y:cY-rH},thickness:0.5,color:rgb(0.8,0.8,0.8)}); // Line below row
+                        
+                        let cX=M; 
+                        rD.forEach((txt,i)=>{drawWrap(String(txt),cX+ROW_PADDING,cY-ROW_PADDING-(FS*0.2),cW[i]-(2*ROW_PADDING),curP,helvetica,FS);cX+=cW[i];});
+                        cY-=rH;
+                        rowNum++;
+                    });
+                }); 
+                const b=await pdfDoc.save();triggerDownload(new Blob([b],{type:'application/pdf'}),`annotated_data_with_tables_${formatDateForFilename()}.pdf`);markUnsavedChanges(false); 
+            }catch(e){console.error("Error PDF tables:",e);alert(`Error PDF tables: ${e.message}`);}
+        }
+
+        // --- Panel Management (Resizers Only) ---
+        function initResizers(){let dR=null,sX,sW={};function sD(e,r){dR=r;sX=e.clientX;if(r===DOMElements.resizerVA){sW.pdfViewer=DOMElements.pdfViewer.offsetWidth;sW.attributesPanel=DOMElements.attributesPanel.offsetWidth;}else if(r===DOMElements.resizerAL){sW.attributesPanel=DOMElements.attributesPanel.offsetWidth;sW.idListPanel=DOMElements.idListPanel.offsetWidth;}document.addEventListener('mousemove',dD);document.addEventListener('mouseup',eD);document.body.style.cursor='col-resize';document.body.style.userSelect='none';} function dD(e){if(!dR)return;const dX=e.clientX-sX;const mPW=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--panel-min-width'));if(dR===DOMElements.resizerVA){let nVW=sW.pdfViewer+dX;let nAW=sW.attributesPanel-dX;if(nVW>=mPW&&nAW>=mPW){DOMElements.pdfViewer.style.flexBasis=`${nVW}px`;DOMElements.attributesPanel.style.flexBasis=`${nAW}px`;}}else if(dR===DOMElements.resizerAL){let nAW=sW.attributesPanel+dX;let nILW=sW.idListPanel-dX;if(nAW>=mPW&&nILW>=mPW){DOMElements.attributesPanel.style.flexBasis=`${nAW}px`;DOMElements.idListPanel.style.flexBasis=`${nILW}px`;}}} function eD(){if(!dR)return;dR=null;document.removeEventListener('mousemove',dD);document.removeEventListener('mouseup',eD);document.body.style.cursor='default';document.body.style.userSelect='auto';if(pdfDoc)debouncedRenderPageOnResize();} 
+            // Add null checks before attaching event listeners
+            if (DOMElements.resizerVA) {
+                DOMElements.resizerVA.addEventListener('mousedown',e=>sD(e,DOMElements.resizerVA));
+            } else {
+                console.warn("resizerVA element not found.");
+            }
+            if (DOMElements.resizerAL) {
+                DOMElements.resizerAL.addEventListener('mousedown',e=>sD(e,DOMElements.resizerAL));
+            } else {
+                console.warn("resizerAL element not found.");
+            }
+        }
+        function loadPanelStates(){} // Not actively used for collapsing panels anymore, but keeping for structure.
+        function applyPanelStates(){} // Not actively used.
+
+        // --- UI State Updates ---
+        function updateExportAndActionButtonsState(){
+            const hasPdf=!!pdfDoc;
+            const hasAnnotations=getAllAnnotations().length>0;
+            
+            DOMElements.exportDropdownToggleBtn.disabled=!hasPdf;
+            DOMElements.exportCsvLink.classList.toggle('disabled',!hasAnnotations);
+            DOMElements.clearAnnotationsBtn.disabled=!hasAnnotations||!hasPdf;
+            DOMElements.copyAllSectionsBtn.disabled=!hasAnnotations;
+            
+            // Update icon fill for disabled states
+            DOMElements.clearAnnotationsBtn.querySelector('svg').style.fill = DOMElements.clearAnnotationsBtn.disabled ? 'var(--text-secondary)' : 'var(--text-primary)';
+            DOMElements.copyAllSectionsBtn.querySelector('svg').style.fill = DOMElements.copyAllSectionsBtn.disabled ? 'var(--text-secondary)' : 'var(--text-primary)';
+            DOMElements.expandAllBtn.querySelector('svg').style.fill = hasAnnotations ? 'var(--text-primary)' : 'var(--text-secondary)';
+            DOMElements.collapseAllBtn.querySelector('svg').style.fill = hasAnnotations ? 'var(--text-primary)' : 'var(--text-secondary)';
+
+
+            DOMElements.idListContainer.querySelectorAll('.copy-section-btn').forEach(b=>{
+                const sum=b.closest('summary');
+                if(sum){
+                    const sN=sum.dataset.sectionName;
+                    const sAC=getAllAnnotations().filter(a=>a.section===sN).length;
+                    b.disabled=sAC===0;
+                    b.querySelector('svg').style.fill = b.disabled ? 'var(--text-secondary)' : 'var(--text-primary)';
+                }
+            });
+            DOMElements.idListContainer.querySelectorAll('.edit-section-btn').forEach(b=>{
+                const sum=b.closest('summary');
+                if(sum){
+                    const sN=sum.dataset.sectionName;
+                    // Edit button should always be enabled if there's a section to edit
+                    b.disabled=false; 
+                    b.querySelector('svg').style.fill = 'var(--text-primary)';
+                }
+            });
+        }
+        function resetUI(){
+            pdfDoc=null;originalPdfRawBytes=null;currentPageNum=1;totalNumPages=0;
+            sections={};annotations={}; 
+            selectedAnnotation=null;currentSectionName=null;hasUnsavedChanges=false;
+            ctx.clearRect(0,0,DOMElements.pdfCanvas.width,DOMElements.pdfCanvas.height);
+            DOMElements.annotationLayer.innerHTML="";DOMElements.canvasContainer.querySelectorAll('.bbox').forEach(b=>b.remove());
+            initDefaultSection();updatePageControls();updateActiveSectionDropdown();
+            redrawIdList();hideAnnotationAttributeForm();hideSectionForm();
+            updateExportAndActionButtonsState();markUnsavedChanges(false);
+        }
+        
+        // --- Event Listeners Setup ---
+        function setupEventListeners(){
+            DOMElements.pdfUpload.addEventListener('change',handlePdfUpload);
+            DOMElements.prevPageBtn.addEventListener('click',handlePrevPage);
+            DOMElements.nextPageBtn.addEventListener('click',handleNextPage);
+            DOMElements.gotoPageBtn.addEventListener('click',handleGoToPage);
+            DOMElements.pageNumInput.addEventListener('keypress',e=>{if(e.key==='Enter')handleGoToPage();});
+            DOMElements.clearAnnotationsBtn.addEventListener('click',handleClearAllAnnotations);
+            DOMElements.newSectionBtn.addEventListener('click',()=>showSectionForm('create'));
+            DOMElements.saveSectionBtn.addEventListener('click',handleSaveSection);
+            DOMElements.cancelSectionBtn.addEventListener('click',hideSectionForm);
+            DOMElements.deleteSectionBtn.addEventListener('click',handleDeleteSection);
+            DOMElements.annotationLayer.addEventListener('mousedown',handleAnnotationLayerMouseDown);
+            DOMElements.copyAllSectionsBtn.addEventListener('click',handleCopyAllSectionsTable);
+            DOMElements.expandAllBtn.addEventListener('click',()=>{DOMElements.idListContainer.querySelectorAll('details').forEach(d=>d.open=true);}); 
+            DOMElements.collapseAllBtn.addEventListener('click',()=>{DOMElements.idListContainer.querySelectorAll('details').forEach(d=>d.open=false);});
+
+            DOMElements.exportCsvLink.addEventListener('click',e=>{e.preventDefault();if(!e.target.classList.contains('disabled'))handleExportCsv();});
+            DOMElements.exportPdfSaveResumeLink.addEventListener('click',e=>{e.preventDefault();if(!e.target.classList.contains('disabled'))handleExportPdfSaveResume();});
+            DOMElements.exportPdfTablesLink.addEventListener('click',e=>{e.preventDefault();if(!e.target.classList.contains('disabled'))handleExportPdfWithTables();});
+            window.addEventListener('resize',debouncedRenderPageOnResize);
+            window.addEventListener('beforeunload',e=>{if(hasUnsavedChanges){e.preventDefault();e.returnValue='';}});
+
+            // NEW: Section Attribute Template Buttons
+            DOMElements.templateGeneralFieldBtn.addEventListener('click', () => renderSectionAttributeCheckboxes(ATTRIBUTE_TEMPLATES['general-field']));
+            DOMElements.templateErpMappedBtn.addEventListener('click', () => renderSectionAttributeCheckboxes(ATTRIBUTE_TEMPLATES['erp-mapped']));
+            DOMElements.templateCalculatedBtn.addEventListener('click', () => renderSectionAttributeCheckboxes(ATTRIBUTE_TEMPLATES['calculated']));
+            DOMElements.templateClearAllAttributesBtn.addEventListener('click', () => renderSectionAttributeCheckboxes([]));
+
+            // NEW: Confirmation Modal Event Listeners
+            DOMElements.closeConfirmationModal.addEventListener('click', () => {
+                hideConfirmationModal();
+                if (confirmationCallback) confirmationCallback(false); // Call with false if closed without explicit choice
+            });
+            DOMElements.confirmNoBtn.addEventListener('click', () => {
+                hideConfirmationModal();
+                if (confirmationCallback) confirmationCallback(false);
+            });
+            DOMElements.confirmYesBtn.addEventListener('click', () => {
+                hideConfirmationModal();
+                if (confirmationCallback) confirmationCallback(true);
+            });
+        }
+
+        // --- Start App ---
+        initializeApp();
+    }); 
+    </script>
+</body>
+</html>
