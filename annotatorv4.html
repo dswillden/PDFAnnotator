@@ -316,13 +316,32 @@
         #id-list-controls .icon-button svg {
             width: 16px; /* Smaller icons in header list */
             height: 16px;
+        }        #id-list-header { 
+            display: flex; 
+            flex-direction: column; 
+            margin-bottom: 10px; 
         }
-
-
-        #id-list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        #id-list-header h3 { margin: 0; flex-grow: 1; }
-        #id-list-controls { display: flex; gap: 5px; flex-wrap: nowrap; flex-shrink: 0; }
-        #id-list-controls button { font-size: 0.8em; padding: 5px 8px; flex-shrink: 0; white-space: nowrap; }
+        #id-list-header h3 { 
+            margin: 0 0 8px 0; 
+            align-self: flex-start; 
+        }
+        #id-list-controls { 
+            display: flex; 
+            gap: 5px; 
+            flex-wrap: nowrap; 
+            justify-content: flex-start; 
+            align-self: stretch; 
+        }
+        #id-list-controls button { 
+            font-size: 0.8em; 
+            padding: 8px; 
+            flex-shrink: 0; 
+            white-space: nowrap; 
+            min-width: 36px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
         #id-list details { margin-bottom: 5px; border: 1px solid var(--border-color); border-radius: 4px; }
         #id-list summary { padding: 8px; background-color: var(--bg-secondary); cursor: pointer; display: flex; align-items: center; gap: 8px; }
         #id-list summary:hover { background-color: var(--bg-tertiary); }
@@ -482,23 +501,20 @@
         <div class="panel-resizer" id="resizer-va"></div>
 
         <div id="id-list-panel" class="panel">
-            <div class="panel-content-wrapper">
-                <div id="id-list-header">
+            <div class="panel-content-wrapper">                <div id="id-list-header">
                     <h3>Generated Element IDs</h3>
                     <div id="id-list-controls">
                         <button id="copy-all-sections-btn" class="icon-button" title="Copy All Sections">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-                            <span>Copy All</span>
                         </button>
                         <button id="expand-all-btn" class="icon-button" title="Expand All">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z"/></svg>
-                            <span>Expand</span>
                         </button>
                         <button id="collapse-all-btn" class="icon-button" title="Collapse All">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 10l-6 6-6-6 1.41-1.41L12 13.17l4.59-4.58z"/></svg>
-                            <span>Collapse</span>
                         </button>
                     </div>
+                </div>
                 </div>
                 <div id="id-list" style="max-height: calc(100vh - 180px); overflow-y: auto;"></div>
             </div>
@@ -1215,115 +1231,123 @@
         }
 
         // --- ID List (with Drag and Drop) ---
-        function redrawIdList() { 
-            DOMElements.idListContainer.innerHTML=""; 
-            const expSec=new Set(); 
-            DOMElements.idListContainer.querySelectorAll('details[open]').forEach(d=>expSec.add(d.querySelector('summary').dataset.sectionName)); 
-            
-            Object.keys(sections).sort().forEach(secName=>{ 
-                const sec=sections[secName]; 
-                // Sort annotations primarily by orderInSection, then by ID
-                const secAnns=getAllAnnotations().filter(a=>a.section === secName).sort((a,b)=>{
-                    const oA=a.orderInSection===undefined?Infinity:a.orderInSection;
-                    const oB=b.orderInSection===undefined?Infinity:b.orderInSection;
-                    if(oA!==oB)return oA-oB;
-                    return a.id.localeCompare(b.id,{numeric:true});
-                }); 
-                
-                const det=document.createElement('details'); 
-                if(expSec.has(secName)||secAnns.some(a=>a.id===selectedAnnotation))det.open=true; 
-                
-                const sum=document.createElement('summary'); 
-                sum.dataset.sectionName=secName; 
-                const cC=document.createElement('span');cC.className='section-color-chip';cC.style.backgroundColor=sec.color;sum.appendChild(cC); 
-                const nPS=document.createElement('span');nPS.textContent=`${secName} (${sec.prefix})`;sum.appendChild(nPS); 
-                const eSB=document.createElement('button');eSB.className='edit-section-btn icon-button';eSB.title='Edit Section';eSB.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';eSB.onclick=e=>{e.preventDefault();e.stopPropagation();showSectionForm('edit',secName);};sum.appendChild(eSB); 
-                const cSB=document.createElement('button');cSB.className='copy-section-btn icon-button';cSB.title='Copy Section Table';cSB.disabled=secAnns.length===0;cSB.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';cSB.onclick=e=>{e.preventDefault();e.stopPropagation();handleCopySectionTable(secName,cSB);};sum.appendChild(cSB); 
-                det.appendChild(sum); 
+        function redrawIdList() {
+            const openSectionNames = new Set();
+            // Step 1: Get currently open sections BEFORE clearing.
+            DOMElements.idListContainer.querySelectorAll('details[open]').forEach(detailsElement => {
+                const summary = detailsElement.querySelector('summary');
+                if (summary && summary.dataset.sectionName) {
+                    openSectionNames.add(summary.dataset.sectionName);
+                }
+            });
 
-                if(secAnns.length>0){
-                    const ul=document.createElement('ul');
-                    ul.dataset.sectionName = secName; // Add section name to ul for drag/drop
-                    ul.addEventListener('dragover', handleDragOver);
-                    ul.addEventListener('drop', handleDrop);
-                    ul.addEventListener('dragleave', handleDragLeave); // To remove drag-over class
+            // Step 2: Clear the container.
+            DOMElements.idListContainer.innerHTML = "";
 
-                    secAnns.forEach(ann=>{
-                        const li=document.createElement('li');
-                        li.className='id-list-item';
-                        li.id=`list-item-${ann.id}`;
-                        li.dataset.id = ann.id; // Store annotation ID
-                        li.draggable = true; // Make draggable
-                        li.addEventListener('dragstart', handleDragStart);
-                        li.addEventListener('dragover', handleDragOver); // For reordering within the list
-                        li.addEventListener('dragleave', handleDragLeave);
-                        li.addEventListener('drop', handleDrop);
-                        li.addEventListener('dragend', handleDragEnd); // Clean up after drag
+            // Step 3: Rebuild the list.
+            Object.keys(sections).sort().forEach(secName => {
+                const sectionData = sections[secName]; // Assuming sections[secName] holds data if needed.
 
-                        if(ann.id===selectedAnnotation)li.classList.add('list-item-highlighted'); 
-                        
-                        const clA=document.createElement('div');
-                        clA.className='list-item-clickable-area';
-                        clA.onclick=()=>handleIdListItemClick(ann.id);
-                        
-                        const orderS=document.createElement('span'); // Display orderInSection
-                        orderS.className='list-item-order';
-                        orderS.textContent=`${ann.orderInSection}.`; // Show step number
-                        clA.appendChild(orderS);
+                const sectionAnnotations = getAllAnnotations().filter(ann => ann.section === secName).sort((a, b) => {
+                    const oA = a.orderInSection === undefined ? Infinity : a.orderInSection;
+                    const oB = b.orderInSection === undefined ? Infinity : b.orderInSection;
+                    if (oA !== oB) return oA - oB;
+                    return a.id.localeCompare(b.id, { numeric: true });
+                });
 
-                        const idS=document.createElement('span'); // Keep full ID hidden but accessible
-                        idS.className='list-item-id-hidden';
-                        idS.textContent=ann.id;
-                        clA.appendChild(idS);
-                        
-                        const lbS=document.createElement('span');
-                        lbS.className='list-item-label';
-                        lbS.textContent=ann.labelText || '(No Field Name)'; // Use labelText for display
-                        lbS.title=ann.labelText || '(No Field Name)';
-                        clA.appendChild(lbS);
-                        
-                        const tyS=document.createElement('span');
-                        tyS.className='list-item-type';
-                        tyS.textContent=ann.componentType || '(No Type)'; // Use componentType for display
-                        clA.appendChild(tyS);
-                        
-                        li.appendChild(clA); 
+                const detailsElement = document.createElement('details');
+                detailsElement.className = 'id-list-section';
 
-                        const deleteBtn = document.createElement('button');
-                        deleteBtn.className = 'delete-btn icon-button';
-                        deleteBtn.title = 'Delete Annotation';
-                        deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
-                        deleteBtn.addEventListener('click', (e) => {
-                            e.stopPropagation(); // Prevent li click event
-                            // console.log(`[redrawIdList] Delete button clicked for annotationId: ${ann.id}`);
-                            deleteAnnotation(ann.id);
-                        });
-                        li.appendChild(deleteBtn);
+                // Restore open state for the section
+                if (openSectionNames.has(secName)) {
+                    detailsElement.open = true;
+                }
 
-                        // The main click event for selection is now on clA (clickableArea)
-                        // So, this li event listener might be redundant if clA covers the whole area except the button.
-                        // If direct li clicks are still desired for selection (outside the button), it can be kept.
-                        // For now, let's assume clA handles selection clicks.
-                        // li.addEventListener('click', () => {
-                        //     console.log(`[redrawIdList] List item clicked for annotationId: ${ann.id}`);
-                        //     selectAnnotation(ann.id);
-                        // });
+                const summaryElement = document.createElement('summary');
+                summaryElement.dataset.sectionName = secName;
 
-                        // Drag and Drop Event Listeners for list items
-                        // These are already defined above for the li element.
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'section-title';
+                titleSpan.textContent = `${secName} (${sectionAnnotations.length})`;
+                summaryElement.appendChild(titleSpan);
 
-                        ul.appendChild(li);
+                // Add Edit Button
+                const editBtn = document.createElement('button');
+                editBtn.className = 'edit-section-btn icon-btn';
+                editBtn.title = `Edit section '${secName}' attributes`;
+                editBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>'; // Generic Edit Icon
+                editBtn.addEventListener('click', (e) => {
+                    e.preventDefault(); // Prevent details toggle
+                    showSectionForm('edit', secName);
+                });
+                summaryElement.appendChild(editBtn);
+
+                // Add Copy Button
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'copy-section-btn icon-btn';
+                copyBtn.title = `Copy annotations in section '${secName}' to clipboard`;
+                copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path></svg>'; // Generic Copy Icon
+                copyBtn.addEventListener('click', (e) => {
+                    e.preventDefault(); // Prevent details toggle
+                    e.stopPropagation(); // Prevent click bubbling to summary/details
+                    handleCopySectionTable(secName, copyBtn);
+                });
+                summaryElement.appendChild(copyBtn);
+                detailsElement.appendChild(summaryElement);                const ulElement = document.createElement('ul');
+                ulElement.dataset.sectionName = secName; // Useful for drag-drop context
+
+                sectionAnnotations.forEach(ann => {
+                    const li = document.createElement('li');
+                    li.dataset.id = ann.id;
+                    li.className = 'id-list-item';
+                    li.draggable = true;
+
+                    // Create a container for the text content
+                    const textSpan = document.createElement('span');
+                    textSpan.style.flexGrow = '1';
+                    textSpan.style.cursor = 'pointer';
+                    
+                    // Displaying ID, labelText, and orderInSection. Adjust as needed.
+                    let label = ann.labelText || '(No Label)';
+                    if (typeof ann.labelText === 'object') label = JSON.stringify(ann.labelText); // Handle complex labels
+                    const order = ann.orderInSection !== undefined && ann.orderInSection !== null ? ann.orderInSection : 'N/A';
+                    textSpan.textContent = `ID: ${ann.id} - ${label} (Order: ${order})`;
+
+                    // Create delete button
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.title = `Delete annotation ${ann.id}`;
+                    deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 3V4H4V6H5V19C5 20.1 5.9 21 7 21H17C18.1 21 19 20.1 19 19V6H20V4H15V3H9ZM7 6H17V19H7V6ZM9 8V17H11V8H9ZM13 8V17H15V8H13Z"/></svg>';
+                    
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation(); // Prevent the li click event from firing
+                        deleteAnnotation(ann.id);
                     });
-                    det.appendChild(ul);
-                } else{
-                    const p=document.createElement('p');
-                    p.textContent="No annotations.";
-                    Object.assign(p.style,{padding:"8px",fontSize:"0.9em",color:"var(--text-secondary)"});
-                    det.appendChild(p);
-                } 
-                DOMElements.idListContainer.appendChild(det);
-            }); 
-            updateExportAndActionButtonsState(); 
+
+                    // Style the li as a flex container
+                    li.style.display = 'flex';
+                    li.style.alignItems = 'center';
+                    li.style.gap = '8px';
+
+                    // Add text span and delete button to li
+                    li.appendChild(textSpan);
+                    li.appendChild(deleteBtn);
+
+                    // Add click event to the text span instead of the whole li
+                    textSpan.addEventListener('click', () => handleIdListItemClick(ann.id));
+                    li.addEventListener('dragstart', handleDragStart);
+                    li.addEventListener('dragover', handleDragOver);
+                    li.addEventListener('dragleave', handleDragLeave);
+                    li.addEventListener('drop', handleDrop);
+                    li.addEventListener('dragend', handleDragEnd);
+                    ulElement.appendChild(li);
+                });
+                detailsElement.appendChild(ulElement);
+                DOMElements.idListContainer.appendChild(detailsElement);
+            });
+
+            updateExportAndActionButtonsState();
         }
 
         // --- Drag and Drop Handlers ---
@@ -1466,21 +1490,12 @@
             allAnns.forEach(ann => {
                 const pageNum = findPageForAnnotation(ann.id);
                 const rowData = allSortedAttributeKeys.map(key => {
-                    let value;
-                    if (key === "Section") value = ann.section;
-                    else if (key === "ID") value = ann.id;
-                    else if (key === "Page") value = pageNum;
-                    else if (ALL_ANNOTATION_ATTRIBUTES_SCHEMA[key]) { // It's one of our defined attributes
-                        value = ann[key];
-                    } else {
-                        value = undefined; // Should not happen if all keys are from schema, but safety
-                    }
-
-                    // Format values for CSV (handle undefined/null, boolean, and escape quotes)
-                    let s = (value === undefined || value === null) ? "" : String(value);
-                    if (typeof value === 'boolean') s = value ? "Yes" : "No"; // Convert boolean to Yes/No for readability
-                    return `"${s.replace(/"/g,'""')}"`; // Escape double quotes and wrap in quotes
+                    if (key === "Section") return ann.section;
+                    if (key === "ID") return ann.id;
+                    if (key === "Page") return pageNum;
+                    return ann[key];
                 });
+
                 csvRows.push(rowData.join(","));
             }); 
             triggerDownload(new Blob([csvRows.join("\n")],{type:'text/csv;charset=utf-8;'}),`annotations_ebr_mapping_${formatDateForFilename()}.csv`);
